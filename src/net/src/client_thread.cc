@@ -75,6 +75,7 @@ Status ClientThread::Write(const std::string& ip, const int port, const std::str
     for (auto& str : to_send_[ip_port]) {
       size += str.size();
     }
+    //    也要看一下这个队列有没有超过最大大小限制
     if (size > kConnWriteBuf) {
       return Status::Corruption("Connection buffer over maximum size");
     }
@@ -133,8 +134,8 @@ Status ClientThread::ScheduleConnect(const std::string& dst_ip, int dst_port) {
   int rv;
   char cport[6];
   struct addrinfo hints;
-  struct addrinfo *servinfo;
-  struct addrinfo *p;
+  struct addrinfo* servinfo;
+  struct addrinfo* p;
   snprintf(cport, sizeof(cport), "%d", dst_port);
   memset(&hints, 0, sizeof(hints));
   hints.ai_family = AF_INET;
@@ -156,7 +157,9 @@ Status ClientThread::ScheduleConnect(const std::string& dst_ip, int dst_port) {
         CloseFd(sockfd, dst_ip + ":" + std::to_string(dst_port));
         continue;
       } else if (errno == EINPROGRESS || errno == EAGAIN || errno == EWOULDBLOCK) {
+        // 稍微遇到一些阻塞，但最终还是会OK，所以先在两个map里插入conn对象
         NewConnection(dst_ip, dst_port, sockfd);
+        //        但是延迟注册到epoll
         SetWaitConnectOnEpoll(sockfd);
         freeaddrinfo(servinfo);
         return Status::OK();
@@ -305,6 +308,7 @@ void ClientThread::ProcessNotifyEvents(const NetFiredEvent* pfe) {
   if (pfe->mask & kReadable) {
     char bb[2048];
     int64_t nread = read(net_multiplexer_->NotifyReceiveFd(), bb, 2048);
+    //    一次性可以清空多个空字符/处理多次通知
     if (nread == 0) {
       return;
     } else {
@@ -348,8 +352,7 @@ void ClientThread::ProcessNotifyEvents(const NetFiredEvent* pfe) {
           }
           std::lock_guard l(mu_);
           if (!send_failed_msgs.empty()) {
-            send_failed_msgs.insert(send_failed_msgs.end(), to_send_[ip_port].begin(),
-                                    to_send_[ip_port].end());
+            send_failed_msgs.insert(send_failed_msgs.end(), to_send_[ip_port].begin(), to_send_[ip_port].end());
             send_failed_msgs.swap(to_send_[ip_port]);
             NotifyWrite(ip_port);
           }
@@ -376,10 +379,12 @@ void* ClientThread::ThreadMain() {
 
   when.tv_sec += (cron_interval_ / 1000);
   when.tv_usec += ((cron_interval_ % 1000) * 1000);
+  // whne现在存储的是下一个过期的deadline
   int timeout = cron_interval_;
   if (timeout <= 0) {
     timeout = NET_CRON_INTERVAL;
   }
+  //  设置单次超时时间，以避免有些CronTask做不了
 
   std::string ip_port;
 
@@ -387,12 +392,15 @@ void* ClientThread::ThreadMain() {
     if (cron_interval_ > 0) {
       gettimeofday(&now, nullptr);
       if (when.tv_sec > now.tv_sec || (when.tv_sec == now.tv_sec && when.tv_usec > now.tv_usec)) {
+        //        如果没有超时，更新timeout
         timeout = static_cast<int32_t>((when.tv_sec - now.tv_sec) * 1000 + (when.tv_usec - now.tv_usec) / 1000);
       } else {
+        //        如果超时，执行cronTsk
         // do user defined cron
         handle_->CronHandle();
 
         DoCronTask();
+        //        更新下一个过期的时间以及超时时间
         when.tv_sec = now.tv_sec + (cron_interval_ / 1000);
         when.tv_usec = now.tv_usec + ((cron_interval_ % 1000) * 1000);
         timeout = cron_interval_;
@@ -409,6 +417,11 @@ void* ClientThread::ThreadMain() {
       }
 
       if (pfe->fd == net_multiplexer_->NotifyReceiveFd()) {
+        //        是管道事件吗？
+        /*
+         * 1 可能会加新连接
+         * 2 如果连接已经存在，会修改epoll监听状态为read和write
+         * */
         ProcessNotifyEvents(pfe);
         continue;
       }
@@ -420,9 +433,9 @@ void* ClientThread::ThreadMain() {
         net_multiplexer_->NetDelEvent(pfe->fd, 0);
         continue;
       }
-
+      //      取得fd，拿到Conn对象
       std::shared_ptr<NetConn> conn = iter->second;
-
+      // 如果这个fd是处于连接状态/正在连接的状态?
       if (connecting_fds_.count(pfe->fd)) {
         Status s = ProcessConnectStatus(pfe, &should_close);
         if (!s.ok()) {
@@ -432,6 +445,7 @@ void* ClientThread::ThreadMain() {
       }
 
       if ((should_close == 0) && (pfe->mask & kWritable) && conn->is_reply()) {
+        //        如果有可写事件就写，写完了就设置可读监听，如果writeHalf，就下个循环接着写
         WriteStatus write_status = conn->SendReply();
         conn->set_last_interaction(now);
         if (write_status == kWriteAll) {
@@ -446,6 +460,7 @@ void* ClientThread::ThreadMain() {
       }
 
       if ((should_close == 0) && (pfe->mask & kReadable)) {
+        //        可读事件，处理请求
         ReadStatus read_status = conn->GetRequest();
         conn->set_last_interaction(now);
         if (read_status == kReadAll) {

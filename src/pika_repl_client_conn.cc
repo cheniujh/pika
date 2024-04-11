@@ -11,8 +11,8 @@
 
 #include "include/pika_rm.h"
 #include "include/pika_server.h"
-#include "pstd/include/pstd_string.h"
 #include "pika_inner_message.pb.h"
+#include "pstd/include/pstd_string.h"
 
 using pstd::Status;
 
@@ -24,7 +24,7 @@ PikaReplClientConn::PikaReplClientConn(int fd, const std::string& ip_port, net::
     : net::PbConn(fd, ip_port, thread, mpx) {}
 
 bool PikaReplClientConn::IsDBStructConsistent(const std::vector<DBStruct>& current_dbs,
-                                                 const std::vector<DBStruct>& expect_dbs) {
+                                              const std::vector<DBStruct>& expect_dbs) {
   if (current_dbs.size() != expect_dbs.size()) {
     return false;
   }
@@ -138,13 +138,16 @@ void PikaReplClientConn::HandleMetaSyncResponse(void* arg) {
   }
 
   // First synchronization between the master and slave
+//  如果发现replicationID相同，就会尝试增量
   if (g_pika_conf->replication_id() != meta_sync.replication_id()) {
-    LOG(INFO) << "New node is added to the cluster and requires full replication, remote replication id: " << meta_sync.replication_id()
-              << ", local replication id: " << g_pika_conf->replication_id();
+    LOG(INFO) << "New node is added to the cluster and requires full replication, remote replication id: "
+              << meta_sync.replication_id() << ", local replication id: " << g_pika_conf->replication_id();
     g_pika_server->force_full_sync_ = true;
     g_pika_conf->SetReplicationID(meta_sync.replication_id());
     g_pika_conf->ConfigRewriteReplicationID();
   }
+
+//  在这里，如果发现replicationID相同，是否应该试着tryConnect呢，试一下能否增量呢？
 
   g_pika_conf->SetWriteBinlog("yes");
   g_pika_server->PrepareDBTrySync();
@@ -162,8 +165,8 @@ void PikaReplClientConn::HandleDBSyncResponse(void* arg) {
   const InnerMessage::Slot& db_response = db_sync_response.slot();
   const std::string& db_name = db_response.db_name();
 
-  std::shared_ptr<SyncSlaveDB> slave_db =
-      g_pika_rm->GetSyncSlaveDBByName(DBInfo(db_name));
+  //  这个我应当一直都有
+  std::shared_ptr<SyncSlaveDB> slave_db = g_pika_rm->GetSyncSlaveDBByName(DBInfo(db_name));
   if (!slave_db) {
     LOG(WARNING) << "Slave DB: " << db_name << " Not Found";
     return;
@@ -197,15 +200,17 @@ void PikaReplClientConn::HandleTrySyncResponse(void* arg) {
   const InnerMessage::InnerResponse_TrySync& try_sync_response = response->try_sync();
   const InnerMessage::Slot& db_response = try_sync_response.slot();
   std::string db_name = db_response.db_name();
-  std::shared_ptr<SyncMasterDB> db =
-      g_pika_rm->GetSyncMasterDBByName(DBInfo(db_name));
+  //  如果replyCode为OK，
+  //  1 slaveDB.repl就转为kConnected状态
+  //  2 发送BinlogSyncAckRequest，ackStart和ackEnd都是自己当前最新的binlog offset
+
+  std::shared_ptr<SyncMasterDB> db = g_pika_rm->GetSyncMasterDBByName(DBInfo(db_name));
   if (!db) {
     LOG(WARNING) << "DB: " << db_name << " Not Found";
     return;
   }
-
-  std::shared_ptr<SyncSlaveDB> slave_db =
-      g_pika_rm->GetSyncSlaveDBByName(DBInfo(db_name));
+  // 复核我是slave
+  std::shared_ptr<SyncSlaveDB> slave_db = g_pika_rm->GetSyncSlaveDBByName(DBInfo(db_name));
   if (!slave_db) {
     LOG(WARNING) << "DB: " << db_name << "Not Found";
     return;
@@ -216,18 +221,22 @@ void PikaReplClientConn::HandleTrySyncResponse(void* arg) {
     BinlogOffset boffset;
     int32_t session_id = try_sync_response.session_id();
     db->Logger()->GetProducerStatus(&boffset.filenum, &boffset.offset);
+    //    无条件使用master给的SessionID
     slave_db->SetMasterSessionId(session_id);
+    //    这个logical Offset似乎没有值
     LogOffset offset(boffset, logic_last_offset);
+
     g_pika_rm->SendBinlogSyncAckRequest(db_name, offset, offset, true);
     slave_db->SetReplState(ReplState::kConnected);
     // after connected, update receive time first to avoid connection timeout
     slave_db->SetLastRecvTime(pstd::NowMicros());
-
     LOG(INFO) << "DB: " << db_name << " TrySync Ok";
   } else if (try_sync_response.reply_code() == InnerMessage::InnerResponse::TrySync::kSyncPointBePurged) {
+    //    如果主节点说你要的binlog我已经没有了（ReplyCode为kSyncPointBePurged），说明我需要全量
     slave_db->SetReplState(ReplState::kTryDBSync);
     LOG(INFO) << "DB: " << db_name << " Need To Try DBSync";
   } else if (try_sync_response.reply_code() == InnerMessage::InnerResponse::TrySync::kSyncPointLarger) {
+    //    如果从节点的binlogOffset大于master，就是有错误的
     slave_db->SetReplState(ReplState::kError);
     LOG(WARNING) << "DB: " << db_name << " TrySync Error, Because the invalid filenum and offset";
   } else if (try_sync_response.reply_code() == InnerMessage::InnerResponse::TrySync::kError) {
@@ -240,10 +249,12 @@ void PikaReplClientConn::DispatchBinlogRes(const std::shared_ptr<InnerMessage::I
   // db to a bunch of binlog chips
   std::unordered_map<DBInfo, std::vector<int>*, hash_db_info> par_binlog;
   for (int i = 0; i < res->binlog_sync_size(); ++i) {
+//    遍历发过来的 每条binlog
     const InnerMessage::InnerResponse::BinlogSync& binlog_res = res->binlog_sync(i);
     // hash key: db
     DBInfo p_info(binlog_res.slot().db_name());
     if (par_binlog.find(p_info) == par_binlog.end()) {
+//      构造容器，按照db塞入不同vector（单纯就是塞了索引而已）
       par_binlog[p_info] = new std::vector<int>();
     }
     par_binlog[p_info]->push_back(i);
@@ -252,13 +263,13 @@ void PikaReplClientConn::DispatchBinlogRes(const std::shared_ptr<InnerMessage::I
   std::shared_ptr<SyncSlaveDB> slave_db;
   for (auto& binlog_nums : par_binlog) {
     RmNode node(binlog_nums.first.db_name_);
-    slave_db = g_pika_rm->GetSyncSlaveDBByName(
-        DBInfo(binlog_nums.first.db_name_));
+    slave_db = g_pika_rm->GetSyncSlaveDBByName(DBInfo(binlog_nums.first.db_name_));
     if (!slave_db) {
       LOG(WARNING) << "Slave DB: " << binlog_nums.first.db_name_ << " not exist";
       break;
     }
     slave_db->SetLastRecvTime(pstd::NowMicros());
+//    属于同一个db的一整批binlog塞进去
     g_pika_rm->ScheduleWriteBinlogTask(binlog_nums.first.db_name_, res,
                                        std::dynamic_pointer_cast<PikaReplClientConn>(shared_from_this()),
                                        reinterpret_cast<void*>(binlog_nums.second));

@@ -90,6 +90,7 @@ bool StableLog::PurgeFiles(uint32_t to, bool manual) {
   auto remain_expire_num = static_cast<int32_t>(binlogs.size() - g_pika_conf->expire_logs_nums());
   std::shared_ptr<SyncMasterDB> master_db = nullptr;
   std::map<uint32_t, std::string>::iterator it;
+//  这个to值默认是0
   for (it = binlogs.begin(); it != binlogs.end(); ++it) {
     if ((manual && it->first <= to)           // Manual purgelogsto
         || (remain_expire_num > 0)            // Expire num trigger

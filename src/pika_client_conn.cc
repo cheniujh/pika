@@ -142,6 +142,7 @@ std::shared_ptr<Cmd> PikaClientConn::DoCmd(const PikaCmdArgsType& argv, const st
     }
   }
 
+//  从节点消费binlog也走这个链路，这里是检查能不能消费
   // reject all the request before new master sync finished
   if (g_pika_server->leader_protected_mode()) {
     c_ptr->res().SetRes(CmdRes::kErrOther, "Cannot process command before new leader sync finished");
@@ -154,6 +155,7 @@ std::shared_ptr<Cmd> PikaClientConn::DoCmd(const PikaCmdArgsType& argv, const st
   }
 
   if (c_ptr->is_write()) {
+//    如果是写命令：1 看binlog报错过没有 2 没有给出key又不是Exec命令（开启事务）  3 当前是从节点，只读模式
     if (g_pika_server->IsDBBinlogIoError(current_db_)) {
       c_ptr->res().SetRes(CmdRes::kErrOther, "Writing binlog failed, maybe no space left on device");
       return c_ptr;
@@ -168,6 +170,7 @@ std::shared_ptr<Cmd> PikaClientConn::DoCmd(const PikaCmdArgsType& argv, const st
       return c_ptr;
     }
   } else if (c_ptr->is_read() && c_ptr->flag_ == 0) {
+//    如果是读命令，检查当前是否是slave，如果不等于状态机不是kConnected,拒绝请求，因为在full sync中？
     const auto& server_guard = std::lock_guard(g_pika_server->GetDBLock());
     int role = 0;
     auto status = g_pika_rm->CheckDBRole(current_db_, &role);

@@ -118,6 +118,7 @@ void HolyThread::HandleConnEvent(NetFiredEvent* pfe) {
   }
 
   if (async_) {
+//    默认应该是异步吧？
     if (pfe->mask & kReadable) {
       ReadStatus read_status = in_conn->GetRequest();
       struct timeval now;

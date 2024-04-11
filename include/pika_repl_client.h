@@ -86,6 +86,7 @@ class PikaReplClient {
   std::unique_ptr<PikaReplClientThread> client_thread_;
   int next_avail_ = 0;
   std::hash<std::string> str_hash;
+//  有几个db，就有几个bgworker？ 不对，就是单纯配置文件给出的量，只是要均匀使用而已
   std::vector<std::unique_ptr<PikaReplBgWorker>> bg_workers_;
 };
 

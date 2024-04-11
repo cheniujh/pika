@@ -5,13 +5,13 @@
 
 #include <glog/logging.h>
 
-#include "include/pika_repl_bgworker.h"
 #include "include/pika_cmd_table_manager.h"
+#include "include/pika_conf.h"
+#include "include/pika_repl_bgworker.h"
 #include "include/pika_rm.h"
 #include "include/pika_server.h"
 #include "pstd/include/pstd_defer.h"
 #include "src/pstd/include/scope_record_lock.h"
-#include "include/pika_conf.h"
 
 extern PikaServer* g_pika_server;
 extern std::unique_ptr<PikaReplicaManager> g_pika_rm;
@@ -42,6 +42,7 @@ void PikaReplBgWorker::ParseBinlogOffset(const InnerMessage::BinlogOffset& pb_of
 }
 
 void PikaReplBgWorker::HandleBGWorkerWriteBinlog(void* arg) {
+  //  处理一批数据同一个db的一批binlog
   auto task_arg = static_cast<ReplClientWriteBinlogTaskArg*>(arg);
   const std::shared_ptr<InnerMessage::InnerResponse> res = task_arg->res;
   std::shared_ptr<net::PbConn> conn = task_arg->conn;
@@ -64,8 +65,10 @@ void PikaReplBgWorker::HandleBGWorkerWriteBinlog(void* arg) {
   for (size_t i = 0; i < index->size(); ++i) {
     const InnerMessage::InnerResponse::BinlogSync& binlog_res = res->binlog_sync((*index)[i]);
     if (i == 0) {
+      //      取出dbname
       db_name = binlog_res.slot().db_name();
     }
+    //    解析出第一个非空binlog的 offset，这是这段binlog的开头 offset
     if (!binlog_res.binlog().empty()) {
       ParseBinlogOffset(binlog_res.binlog_offset(), &pb_begin);
       break;
@@ -73,8 +76,10 @@ void PikaReplBgWorker::HandleBGWorkerWriteBinlog(void* arg) {
   }
 
   // find the last not keepalive binlogsync
+  //  应该有些binlog纯粹就是keep alive用的
   for (int i = static_cast<int>(index->size() - 1); i >= 0; i--) {
     const InnerMessage::InnerResponse::BinlogSync& binlog_res = res->binlog_sync((*index)[i]);
+    //    找到最后一条binlog，确定这批的end
     if (!binlog_res.binlog().empty()) {
       ParseBinlogOffset(binlog_res.binlog_offset(), &pb_end);
       break;
@@ -82,6 +87,7 @@ void PikaReplBgWorker::HandleBGWorkerWriteBinlog(void* arg) {
   }
 
   if (pb_begin == LogOffset()) {
+    //    如果发过来的就是空的，binlogSync，说明就是心跳包而已
     only_keepalive = true;
   }
 
@@ -95,15 +101,13 @@ void PikaReplBgWorker::HandleBGWorkerWriteBinlog(void* arg) {
   // because DispatchBinlogRes() have been order them.
   worker->db_name_ = db_name;
 
-  std::shared_ptr<SyncMasterDB> db =
-      g_pika_rm->GetSyncMasterDBByName(DBInfo(db_name));
+  std::shared_ptr<SyncMasterDB> db = g_pika_rm->GetSyncMasterDBByName(DBInfo(db_name));
   if (!db) {
     LOG(WARNING) << "DB " << db_name << " Not Found";
     return;
   }
 
-  std::shared_ptr<SyncSlaveDB> slave_db =
-      g_pika_rm->GetSyncSlaveDBByName(DBInfo(db_name));
+  std::shared_ptr<SyncSlaveDB> slave_db = g_pika_rm->GetSyncSlaveDBByName(DBInfo(db_name));
   if (!slave_db) {
     LOG(WARNING) << "Slave DB " << db_name << " Not Found";
     return;
@@ -119,9 +123,8 @@ void PikaReplBgWorker::HandleBGWorkerWriteBinlog(void* arg) {
     }
 
     if (slave_db->MasterSessionId() != binlog_res.session_id()) {
-      LOG(WARNING) << "Check SessionId Mismatch: " << slave_db->MasterIp() << ":"
-                   << slave_db->MasterPort() << ", " << slave_db->SyncDBInfo().ToString()
-                   << " expected_session: " << binlog_res.session_id()
+      LOG(WARNING) << "Check SessionId Mismatch: " << slave_db->MasterIp() << ":" << slave_db->MasterPort() << ", "
+                   << slave_db->SyncDBInfo().ToString() << " expected_session: " << binlog_res.session_id()
                    << ", actual_session:" << slave_db->MasterSessionId();
       LOG(WARNING) << "Check Session failed " << binlog_res.slot().db_name();
       slave_db->SetReplState(ReplState::kTryConnect);
@@ -140,6 +143,8 @@ void PikaReplBgWorker::HandleBGWorkerWriteBinlog(void* arg) {
     const char* redis_parser_start = binlog_res.binlog().data() + BINLOG_ENCODE_LEN;
     int redis_parser_len = static_cast<int>(binlog_res.binlog().size()) - BINLOG_ENCODE_LEN;
     int processed_len = 0;
+
+    //    这里直接把这批binlog消费完毕了
     net::RedisParserStatus ret =
         worker->redis_parser_.ProcessInputBuffer(redis_parser_start, redis_parser_len, &processed_len);
     if (ret != net::kRedisParserDone) {
@@ -158,6 +163,7 @@ void PikaReplBgWorker::HandleBGWorkerWriteBinlog(void* arg) {
     std::shared_ptr<Binlog> logger = db->Logger();
     logger->GetProducerStatus(&productor_status.b_offset.filenum, &productor_status.b_offset.offset,
                               &productor_status.l_offset.term, &productor_status.l_offset.index);
+    //    ack end是取决于我这里实际消费了多少
     ack_end = productor_status;
     ack_end.l_offset.term = pb_end.l_offset.term;
   }
@@ -172,8 +178,8 @@ int PikaReplBgWorker::HandleWriteBinlog(net::RedisParser* parser, const net::Red
   std::string monitor_message;
   if (g_pika_server->HasMonitorClients()) {
     std::string db_name = worker->db_name_.substr(2);
-    std::string monitor_message =
-        std::to_string(static_cast<double>(pstd::NowMicros()) / 1000000) + " [" + db_name + " " + worker->ip_port_ + "]";
+    std::string monitor_message = std::to_string(static_cast<double>(pstd::NowMicros()) / 1000000) + " [" + db_name +
+                                  " " + worker->ip_port_ + "]";
     for (const auto& item : argv) {
       monitor_message += " " + pstd::ToRead(item);
     }
@@ -194,8 +200,7 @@ int PikaReplBgWorker::HandleWriteBinlog(net::RedisParser* parser, const net::Red
 
   g_pika_server->UpdateQueryNumAndExecCountDB(worker->db_name_, opt, c_ptr->is_write());
 
-  std::shared_ptr<SyncMasterDB> db =
-      g_pika_rm->GetSyncMasterDBByName(DBInfo(worker->db_name_));
+  std::shared_ptr<SyncMasterDB> db = g_pika_rm->GetSyncMasterDBByName(DBInfo(worker->db_name_));
   if (!db) {
     LOG(WARNING) << worker->db_name_ << "Not found.";
   }
@@ -221,9 +226,8 @@ void PikaReplBgWorker::HandleBGWorkerWriteDB(void* arg) {
   if (!c_ptr->IsSuspend()) {
     c_ptr->GetDB()->DBLockShared();
   }
-  if (c_ptr->IsNeedCacheDo()
-      && PIKA_CACHE_NONE != g_pika_conf->cache_model()
-      && c_ptr->GetDB()->cache()->CacheStatus() == PIKA_CACHE_STATUS_OK) {
+  if (c_ptr->IsNeedCacheDo() && PIKA_CACHE_NONE != g_pika_conf->cache_model() &&
+      c_ptr->GetDB()->cache()->CacheStatus() == PIKA_CACHE_STATUS_OK) {
     if (c_ptr->is_write()) {
       c_ptr->DoThroughDB();
       if (c_ptr->IsNeedUpdateCache()) {
@@ -239,11 +243,8 @@ void PikaReplBgWorker::HandleBGWorkerWriteDB(void* arg) {
     c_ptr->GetDB()->DBUnlockShared();
   }
 
-  if (c_ptr->res().ok()
-      && c_ptr->is_write()
-      && c_ptr->name() != kCmdNameFlushdb
-      && c_ptr->name() != kCmdNameFlushall
-      && c_ptr->name() != kCmdNameExec) {
+  if (c_ptr->res().ok() && c_ptr->is_write() && c_ptr->name() != kCmdNameFlushdb && c_ptr->name() != kCmdNameFlushall &&
+      c_ptr->name() != kCmdNameExec) {
     auto table_keys = c_ptr->current_key();
     for (auto& key : table_keys) {
       key = c_ptr->db_name().append(key);

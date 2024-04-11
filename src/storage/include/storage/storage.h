@@ -1115,7 +1115,6 @@ class Storage {
   bool is_classic_mode_ = true;
 
   std::unique_ptr<LRUCache<std::string, std::string>> cursors_store_;
-
   // Storage start the background thread for compaction task
   pthread_t bg_tasks_thread_id_ = 0;
   pstd::Mutex bg_tasks_mutex_;

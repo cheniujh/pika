@@ -20,6 +20,7 @@ void SyncWindow::Push(const SyncWinItem& item) {
 bool SyncWindow::Update(const SyncWinItem& start_item, const SyncWinItem& end_item, LogOffset* acked_offset) {
   size_t start_pos = win_.size();
   size_t end_pos = win_.size();
+  //  确认一下收到的这个binlogSync ackReq所提供的ackrange是属于syncWin中的哪一段
   for (size_t i = 0; i < win_.size(); ++i) {
     if (win_[i] == start_item) {
       start_pos = i;
@@ -30,17 +31,21 @@ bool SyncWindow::Update(const SyncWinItem& start_item, const SyncWinItem& end_it
     }
   }
   if (start_pos == win_.size() || end_pos == win_.size()) {
+    //    只要有一个在里面定位不到，就是有问题
     LOG(WARNING) << "Ack offset Start: " << start_item.ToString() << "End: " << end_item.ToString()
                  << " not found in binlog controller window." << std::endl
                  << "window status " << std::endl
                  << ToStringStatus();
     return false;
   }
+  //  将得到ack的这批WinItem标记为acked
   for (size_t i = start_pos; i <= end_pos; ++i) {
     win_[i].acked_ = true;
     total_size_ -= win_[i].binlog_size_;
   }
   while (!win_.empty()) {
+    //    只允许从队头pop，并且acked就会等于最后被pop出队的那个item的索引
+    //    如果这次响应的这批其实不是队头这批（可能是中间这批），会如何：不会有item被pop（只有被ack的这批会得到确认），acked_offset会不会得到更新？
     if (win_[0].acked_) {
       *acked_offset = win_[0].offset_;
       win_.pop_front();
@@ -61,7 +66,7 @@ int SyncWindow::Remaining() {
 SlaveNode::SlaveNode(const std::string& ip, int port, const std::string& db_name, int session_id)
     : RmNode(ip, port, db_name, session_id)
 
-      {}
+{}
 
 SlaveNode::~SlaveNode() = default;
 
@@ -97,10 +102,15 @@ Status SlaveNode::Update(const LogOffset& start, const LogOffset& end, LogOffset
     return Status::Corruption("UpdateAckedInfo failed");
   }
   if (*updated_offset == LogOffset()) {
+    //    如果确认的这批并不是队头的这批binlog（在window中间的一批得到了确认），只会对这些binlog标记acked，并不会pop队列，也不会更新acked_offset
     // nothing to update return current acked_offset
     *updated_offset = acked_offset;
     return Status::OK();
   }
+  //  如果队头这批item得到了确认，就可以pop Window的queue，这样就应当更新acked_offset
+  //  所以sentoffset，是window队列中最后一个binlog的offset
+  //  而acked_offset，是队头的binlog的offset - 1，也可以说是被pop出队的，最后一个binlog的offset
+
   // update acked_offset
   acked_offset = *updated_offset;
   return Status::OK();

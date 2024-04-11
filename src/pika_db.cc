@@ -30,15 +30,14 @@ std::string DbSyncPath(const std::string& sync_path, const std::string& db_name)
   return sync_path + buf;
 }
 
-DB::DB(std::string db_name, const std::string& db_path,
-             const std::string& log_path)
+DB::DB(std::string db_name, const std::string& db_path, const std::string& log_path)
     : db_name_(db_name), bgsave_engine_(nullptr) {
   db_path_ = DBPath(db_path, db_name_);
   bgsave_sub_path_ = db_name;
   dbsync_path_ = DbSyncPath(g_pika_conf->db_sync_path(), db_name);
   log_path_ = DBPath(log_path, "log_" + db_name_);
-  storage_ = std::make_shared<storage::Storage>(g_pika_conf->db_instance_num(),
-      g_pika_conf->default_slot_num(), g_pika_conf->classic_mode());
+  storage_ = std::make_shared<storage::Storage>(g_pika_conf->db_instance_num(), g_pika_conf->default_slot_num(),
+                                                g_pika_conf->classic_mode());
   rocksdb::Status s = storage_->Open(g_pika_server->storage_options(), db_path_);
   pstd::CreatePath(db_path_);
   pstd::CreatePath(log_path_);
@@ -50,9 +49,7 @@ DB::DB(std::string db_name, const std::string& db_path,
   LOG(INFO) << db_name_ << " DB Success";
 }
 
-DB::~DB() {
-  StopKeyScan();
-}
+DB::~DB() { StopKeyScan(); }
 
 std::string DB::GetDBName() { return db_name_; }
 
@@ -65,6 +62,7 @@ void DB::BgSaveDB() {
   bgsave_info_.bgsaving = true;
   auto bg_task_arg = new BgTaskArg();
   bg_task_arg->db = shared_from_this();
+//  这是异步任务，完成以后呢，bgsave_info的bgsaving会为false，就是前面设置为true的那个
   g_pika_server->BGSaveTaskSchedule(&DoBgSave, static_cast<void*>(bg_task_arg));
 }
 
@@ -176,7 +174,7 @@ void DB::CompactRange(const storage::DataType& type, const std::string& start, c
 }
 
 void DB::DoKeyScan(void* arg) {
-  std::unique_ptr <BgTaskArg> bg_task_arg(static_cast<BgTaskArg*>(arg));
+  std::unique_ptr<BgTaskArg> bg_task_arg(static_cast<BgTaskArg*>(arg));
   bg_task_arg->db->RunKeyScan();
 }
 
@@ -216,8 +214,8 @@ bool DB::FlushDBWithoutLock() {
   dbpath.append("_deleting/");
   pstd::RenameFile(db_path_, dbpath);
 
-  storage_ = std::make_shared<storage::Storage>(g_pika_conf->db_instance_num(),
-      g_pika_conf->default_slot_num(), g_pika_conf->classic_mode());
+  storage_ = std::make_shared<storage::Storage>(g_pika_conf->db_instance_num(), g_pika_conf->default_slot_num(),
+                                                g_pika_conf->classic_mode());
   rocksdb::Status s = storage_->Open(g_pika_server->storage_options(), db_path_);
   assert(storage_);
   assert(s.ok());
@@ -229,7 +227,7 @@ bool DB::FlushDBWithoutLock() {
 void DB::DoBgSave(void* arg) {
   std::unique_ptr<BgTaskArg> bg_task_arg(static_cast<BgTaskArg*>(arg));
 
-  // Do BgSave
+  // Do BgSave，整个函数返回的时候，dump file已经生成
   bool success = bg_task_arg->db->RunBgsaveEngine();
 
   // Some output
@@ -256,6 +254,12 @@ void DB::DoBgSave(void* arg) {
 
 bool DB::RunBgsaveEngine() {
   // Prepare for Bgsaving
+  //  InitBgSaveEnv:
+  //  1 填充bgsave_info对象，记录开始时间，
+  //  2 构造出完整的bgsave路径为：用户给定的path/用户给定的bgsave_prefix+time_now/dbname/
+//  InitBgsaveEngine: 在里面创建了rocksdb::DBCheckPoint，并且调用了其Create方法来构建快照，文件信息以及lastseq等信息可以通过checkpoint拿到
+//      1 这里面其实不但创建了checkpoint对象，还进行了快照行为（获取文件信息），只是还没建立硬链接
+//
   if (!InitBgsaveEnv() || !InitBgsaveEngine()) {
     ClearBgsave();
     return false;
@@ -267,6 +271,7 @@ bool DB::RunBgsaveEngine() {
             << ", offset=" << info.offset.b_offset.offset;
 
   // Backup to tmp dir
+//  往指定文件夹建立硬链接，函数返回的时候都文件已经就位（下面是多线程，但是有join）
   rocksdb::Status s = bgsave_engine_->CreateNewBackup(info.path);
 
   if (!s.ok()) {
@@ -291,6 +296,8 @@ void DB::FinishBgsave() {
 
 // Prepare engine, need bgsave_protector protect
 bool DB::InitBgsaveEnv() {
+  //  1 填充bgsave_info对象，记录开始时间，
+  //  2 构造出完整的bgsave路径为：用户给定的path/用户给定的bgsave_prefix+time_now/dbname/
   std::lock_guard l(bgsave_protector_);
   // Prepare for bgsave dir
   bgsave_info_.start_time = time(nullptr);
@@ -298,6 +305,7 @@ bool DB::InitBgsaveEnv() {
   int len = static_cast<int32_t>(strftime(s_time, sizeof(s_time), "%Y%m%d%H%M%S", localtime(&bgsave_info_.start_time)));
   bgsave_info_.s_start_time.assign(s_time, len);
   std::string time_sub_path = g_pika_conf->bgsave_prefix() + std::string(s_time, 8);
+  //    构造bgsave存储的中间路径：bgsave_prefix + time_now /bgsave_sub_path_(db_name)
   bgsave_info_.path = g_pika_conf->bgsave_path() + time_sub_path + "/" + bgsave_sub_path_;
   if (!pstd::DeleteDirIfExist(bgsave_info_.path)) {
     LOG(WARNING) << db_name_ << " remove exist bgsave dir failed";
@@ -314,15 +322,18 @@ bool DB::InitBgsaveEnv() {
 
 // Prepare bgsave env, need bgsave_protector protect
 bool DB::InitBgsaveEngine() {
+//  1 这里面就只是拿着db指针给每个实例创建CheckPoint对象打快照
+//  2 拿到DBName，拿到本DB当前PIKA层的最新binlogOffset，存储到bgsave_info中
+//  3
   bgsave_engine_.reset();
+//  这里面就打完了快照，信息都在bgsaveEngine的checkpoints里面
   rocksdb::Status s = storage::BackupEngine::Open(storage().get(), bgsave_engine_, g_pika_conf->db_instance_num());
   if (!s.ok()) {
     LOG(WARNING) << db_name_ << " open backup engine failed " << s.ToString();
     return false;
   }
 
-  std::shared_ptr<SyncMasterDB> db =
-      g_pika_rm->GetSyncMasterDBByName(DBInfo(db_name_));
+  std::shared_ptr<SyncMasterDB> db = g_pika_rm->GetSyncMasterDBByName(DBInfo(db_name_));
   if (!db) {
     LOG(WARNING) << db_name_ << " not found";
     return false;
@@ -337,6 +348,7 @@ bool DB::InitBgsaveEngine() {
       std::lock_guard l(bgsave_protector_);
       bgsave_info_.offset = bgsave_offset;
     }
+//    这里面就是打快照的行为（拿到checkpoint信息了），只是还没有建立硬链接
     s = bgsave_engine_->SetBackupContent();
     if (!s.ok()) {
       LOG(WARNING) << db_name_ << " set backup content failed " << s.ToString();
@@ -347,7 +359,8 @@ bool DB::InitBgsaveEngine() {
 }
 
 void DB::Init() {
-  cache_ = std::make_shared<PikaCache>(g_pika_conf->zset_cache_start_direction(), g_pika_conf->zset_cache_field_num_per_key());
+  cache_ = std::make_shared<PikaCache>(g_pika_conf->zset_cache_start_direction(),
+                                       g_pika_conf->zset_cache_field_num_per_key());
   // Create cache
   cache::CacheConfig cache_cfg;
   g_pika_server->CacheConfigInit(cache_cfg);
@@ -361,7 +374,7 @@ void DB::GetBgSaveMetaData(std::vector<std::string>* fileNames, std::string* sna
   for (int index = 0; index < db_instance_num; index++) {
     std::string instPath = dbPath + ((dbPath.back() != '/') ? "/" : "") + std::to_string(index);
     if (!pstd::FileExists(instPath)) {
-      continue ;
+      continue;
     }
 
     std::vector<std::string> tmpFileNames;
@@ -372,7 +385,7 @@ void DB::GetBgSaveMetaData(std::vector<std::string>* fileNames, std::string* sna
     }
 
     for (const std::string fileName : tmpFileNames) {
-      fileNames -> push_back(std::to_string(index) + "/" + fileName);
+      fileNames->push_back(std::to_string(index) + "/" + fileName);
     }
   }
   fileNames->push_back(kBgsaveInfoFile);
@@ -387,7 +400,7 @@ Status DB::GetBgSaveUUID(std::string* snapshot_uuid) {
   if (snapshot_uuid_.empty()) {
     std::string info_data;
     const std::string infoPath = bgsave_info().path + "/info";
-    //TODO: using file read function to replace rocksdb::ReadFileToString
+    // TODO: using file read function to replace rocksdb::ReadFileToString
     rocksdb::Status s = rocksdb::ReadFileToString(rocksdb::Env::Default(), infoPath, &info_data);
     if (!s.ok()) {
       LOG(WARNING) << "read dump meta info failed! error:" << s.ToString();
@@ -413,14 +426,14 @@ bool DB::TryUpdateMasterOffset() {
     return false;
   }
 
-  std::shared_ptr<SyncSlaveDB> slave_db =
-      g_pika_rm->GetSyncSlaveDBByName(DBInfo(db_name_));
+  std::shared_ptr<SyncSlaveDB> slave_db = g_pika_rm->GetSyncSlaveDBByName(DBInfo(db_name_));
   if (!slave_db) {
     LOG(WARNING) << "Slave DB: " << db_name_ << " not exist";
     return false;
   }
 
   // Got new binlog offset
+//  打开传过来的info文件
   std::ifstream is(info_path);
   if (!is) {
     LOG(WARNING) << "DB: " << db_name_ << ", Failed to open info file after db sync";
@@ -442,8 +455,7 @@ bool DB::TryUpdateMasterOffset() {
       master_ip = line;
     } else if (lineno > 2 && lineno < 8) {
       if ((pstd::string2int(line.data(), line.size(), &tmp) == 0) || tmp < 0) {
-        LOG(WARNING) << "DB: " << db_name_
-                     << ", Format of info file after db sync error, line : " << line;
+        LOG(WARNING) << "DB: " << db_name_ << ", Format of info file after db sync error, line : " << line;
         is.close();
         slave_db->SetReplState(ReplState::kError);
         return false;
@@ -467,12 +479,14 @@ bool DB::TryUpdateMasterOffset() {
     }
   }
   is.close();
-
+//  读取出了bgsave得到的info文件，包含：master_ip&port, binlogFileNum&Offset, term和index目前都是0,info里没有
   LOG(INFO) << "DB: " << db_name_ << " Information from dbsync info"
             << ",  master_ip: " << master_ip << ", master_port: " << master_port << ", filenum: " << filenum
             << ", offset: " << offset << ", term: " << term << ", index: " << index;
 
+//  读完就可以删除了
   pstd::DeleteFile(info_path);
+//  在这里替换rocksdb实例
   if (!ChangeDb(dbsync_path_)) {
     LOG(WARNING) << "DB: " << db_name_ << ", Failed to change db";
     slave_db->SetReplState(ReplState::kError);
@@ -480,8 +494,7 @@ bool DB::TryUpdateMasterOffset() {
   }
 
   // Update master offset
-  std::shared_ptr<SyncMasterDB> master_db =
-      g_pika_rm->GetSyncMasterDBByName(DBInfo(db_name_));
+  std::shared_ptr<SyncMasterDB> master_db = g_pika_rm->GetSyncMasterDBByName(DBInfo(db_name_));
   if (!master_db) {
     LOG(WARNING) << "Master DB: " << db_name_ << " not exist";
     return false;
@@ -520,21 +533,18 @@ bool DB::ChangeDb(const std::string& new_path) {
   std::lock_guard l(dbs_rw_);
   LOG(INFO) << "DB: " << db_name_ << ", Prepare change db from: " << tmp_path;
   storage_.reset();
-
+//  关闭旧Rocksdb实例后，下面就可以做路径的替换（将全量同步过来的文件夹，重命名为db_path_）
   if (0 != pstd::RenameFile(db_path_, tmp_path)) {
-    LOG(WARNING) << "DB: " << db_name_
-                 << ", Failed to rename db path when change db, error: " << strerror(errno);
+    LOG(WARNING) << "DB: " << db_name_ << ", Failed to rename db path when change db, error: " << strerror(errno);
     return false;
   }
 
   if (0 != pstd::RenameFile(new_path, db_path_)) {
-    LOG(WARNING) << "DB: " << db_name_
-                 << ", Failed to rename new db path when change db, error: " << strerror(errno);
+    LOG(WARNING) << "DB: " << db_name_ << ", Failed to rename new db path when change db, error: " << strerror(errno);
     return false;
   }
-
-  storage_ = std::make_shared<storage::Storage>(g_pika_conf->db_instance_num(),
-      g_pika_conf->default_slot_num(), g_pika_conf->classic_mode());
+  storage_ = std::make_shared<storage::Storage>(g_pika_conf->db_instance_num(), g_pika_conf->default_slot_num(),
+                                                g_pika_conf->classic_mode());
   rocksdb::Status s = storage_->Open(g_pika_server->storage_options(), db_path_);
   assert(storage_);
   assert(s.ok());

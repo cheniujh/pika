@@ -15,7 +15,8 @@ namespace net {
 
 void BGThread::Schedule(void (*function)(void*), void* arg) {
   std::unique_lock lock(mu_);
-
+//  如果queue满了，并且should_stop为fale，就解锁并且等待
+  //如果queue还能加入任务，或者should_stop为true，就往下走
   wsignal_.wait(lock, [this]() { return queue_.size() < full_ || should_stop(); });
 
   if (!should_stop()) {

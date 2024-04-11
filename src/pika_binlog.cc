@@ -95,6 +95,8 @@ Binlog::Binlog(std::string  binlog_path, const int file_size)
     version_ = std::make_unique<Version>(versionfile_);
     version_->StableSave();
   } else {
+//    将manifest文件读了出来，构造了一个version对象。也就是manifest存储的就是一个version类型的数据
+//    也就是下一个binlog的filenum，以及当前binlog file内部下一个binlog的offset？
     LOG(INFO) << "Binlog: Find the exist file.";
     std::unique_ptr<pstd::RWFile> tmp_file;
     s = pstd::NewRWFile(manifest, tmp_file);
@@ -202,6 +204,7 @@ Status Binlog::Put(const char* item, int len) {
   uint64_t filesize = queue_->Filesize();
   if (filesize > file_size_) {
     std::unique_ptr<pstd::WritableFile> queue;
+//    pro_num就是正在使用的binlog文件的num
     std::string profile = NewFileName(filename_, pro_num_ + 1);
     s = pstd::NewWritableFile(profile, queue);
     if (!s.ok()) {
@@ -229,7 +232,6 @@ Status Binlog::Put(const char* item, int len) {
     version_->logic_id_++;
     version_->StableSave();
   }
-
   return s;
 }
 

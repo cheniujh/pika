@@ -47,20 +47,24 @@ int PikaReplServer::Stop() {
   server_tp_->stop_thread_pool();
   pika_repl_server_thread_->StopThread();
   pika_repl_server_thread_->Cleanup();
+  printf("PikaReplServer::Stop() finished\n");
   return 0;
 }
 
 pstd::Status PikaReplServer::SendSlaveBinlogChips(const std::string& ip, int port,
                                                   const std::vector<WriteTask>& tasks) {
+//  每一笔task的目标都是同一个slave的同一个DB，完全可以一起发送
   InnerMessage::InnerResponse response;
   BuildBinlogSyncResp(tasks, &response);
-
+//  将整个batch中的多条binlog构造成一个response对象
   std::string binlog_chip_pb;
   if (!response.SerializeToString(&binlog_chip_pb)) {
     return Status::Corruption("Serialized Failed");
   }
 
   if (binlog_chip_pb.size() > static_cast<size_t>(g_pika_conf->max_conn_rbuf_size())) {
+//    如果发现整个batch的大小超过了对方的readbuf大小，就得拆开发送
+//    这有个优化的点，就是应该先做这个检查，而不是等序列化完毕再做这个事情，应当是一个if分支
     for (const auto& task : tasks) {
       InnerMessage::InnerResponse response;
       std::vector<WriteTask> tmp_tasks;
@@ -76,6 +80,7 @@ pstd::Status PikaReplServer::SendSlaveBinlogChips(const std::string& ip, int por
     }
     return pstd::Status::OK();
   }
+//  这里将打包好的resp发送过去slave
   return Write(ip, port, binlog_chip_pb);
 }
 
@@ -90,6 +95,8 @@ void PikaReplServer::BuildBinlogSyncResp(const std::vector<WriteTask>& tasks, In
   response->set_code(InnerMessage::kOk);
   response->set_type(InnerMessage::Type::kBinlogSync);
   for (const auto& task : tasks) {
+    //将多条binlog封装到protobuf里面
+
     InnerMessage::InnerResponse::BinlogSync* binlog_sync = response->add_binlog_sync();
     binlog_sync->set_session_id(task.rm_node_.SessionId());
     InnerMessage::Slot* db = binlog_sync->mutable_slot();

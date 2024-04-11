@@ -33,7 +33,7 @@ struct NetCli::Rep {
 
   Rep() = default;
 
-  Rep(std::string  ip, int port) : peer_ip(std::move(ip)),peer_port(port) {}
+  Rep(std::string ip, int port) : peer_ip(std::move(ip)), peer_port(port) {}
 };
 
 NetCli::NetCli(const std::string& ip, const int port) : rep_(std::make_unique<Rep>(ip, port)) {}
@@ -50,8 +50,8 @@ Status NetCli::Connect(const std::string& ip, const int port, const std::string&
   int rv;
   char cport[6];
   struct addrinfo hints;
-  struct addrinfo *servinfo;
-  struct addrinfo *p;
+  struct addrinfo* servinfo;
+  struct addrinfo* p;
   snprintf(cport, sizeof(cport), "%d", port);
   memset(&hints, 0, sizeof(hints));
   hints.ai_family = AF_INET;
@@ -62,6 +62,7 @@ Status NetCli::Connect(const std::string& ip, const int port, const std::string&
     return Status::IOError("connect getaddrinfo error for ", ip);
   }
   for (p = servinfo; p != nullptr; p = p->ai_next) {
+    //    根据给定的协议，建立socket
     if ((r->sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1) {
       continue;
     }
@@ -78,10 +79,11 @@ Status NetCli::Connect(const std::string& ip, const int port, const std::string&
       }
     }
 
+//    设置socket属性，非阻塞，不继承给子进程等
     int flags = fcntl(r->sockfd, F_GETFL, 0);
     fcntl(r->sockfd, F_SETFL, flags | O_NONBLOCK);
     fcntl(r->sockfd, F_SETFD, fcntl(r->sockfd, F_GETFD) | FD_CLOEXEC);
-
+//    建立对目标的连接
     if (connect(r->sockfd, p->ai_addr, p->ai_addrlen) == -1) {
       if (errno == EHOSTUNREACH) {
         close(r->sockfd);

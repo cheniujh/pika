@@ -137,7 +137,7 @@ Status SyncProgress::Update(const std::string& ip, int port, const LogOffset& st
   if (!slave_ptr) {
     return Status::NotFound("ip " + ip + " port " + std::to_string(port));
   }
-
+//  取出最新的acked_offset
   LogOffset acked_offset;
   {
     // update slave_ptr
@@ -318,6 +318,7 @@ Status ConsensusCoordinator::Reset(const LogOffset& offset) {
 Status ConsensusCoordinator::ProposeLog(const std::shared_ptr<Cmd>& cmd_ptr) {
   std::vector<std::string> keys = cmd_ptr->current_key();
   // slotkey shouldn't add binlog
+//  这里猜测是pika内部slot是借住了一些数据结构的？
   if (cmd_ptr->name() == kCmdNameSAdd && !keys.empty() &&
       (keys[0].compare(0, SlotKeyPrefix.length(), SlotKeyPrefix) == 0 || keys[0].compare(0, SlotTagPrefix.length(), SlotTagPrefix) == 0)) {
     return Status::OK();
@@ -340,12 +341,13 @@ Status ConsensusCoordinator::InternalAppendLog(const std::shared_ptr<Cmd>& cmd_p
 // precheck if prev_offset match && drop this log if this log exist
 Status ConsensusCoordinator::ProcessLeaderLog(const std::shared_ptr<Cmd>& cmd_ptr, const BinlogItem& attribute) {
   LogOffset last_index = mem_logger_->last_offset();
+//  这个mem_logger存储的是最新的logical id吗
   if (attribute.logic_id() < last_index.l_offset.index) {
     LOG(WARNING) << DBInfo(db_name_).ToString() << "Drop log from leader logic_id "
                  << attribute.logic_id() << " cur last index " << last_index.l_offset.index;
     return Status::OK();
   }
-
+//  写binlog就是在bg worker线程上的，多个db可能用同一个bg worker
   Status s = InternalAppendLog(cmd_ptr);
 
   InternalApplyFollower(MemLog::LogItem(LogOffset(), cmd_ptr, nullptr, nullptr));

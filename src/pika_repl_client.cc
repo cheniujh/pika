@@ -58,6 +58,7 @@ int PikaReplClient::Stop() {
   for (auto & bg_worker : bg_workers_) {
     bg_worker->StopThread();
   }
+  printf("PikaReplClient::Stop() finished\n");
   return 0;
 }
 
@@ -69,7 +70,8 @@ void PikaReplClient::Schedule(net::TaskFunc func, void* arg) {
 void PikaReplClient::ScheduleWriteBinlogTask(const std::string& db_name,
                                              const std::shared_ptr<InnerMessage::InnerResponse>& res,
                                              const std::shared_ptr<net::PbConn>& conn, void* res_private_data) {
-  size_t index = GetHashIndex(db_name, true);
+  size_t index = GetHashIndex(db_name, true); //为了均匀地使用bg workers?
+//  每个DB都使用各自的bg workers，才不会相互阻塞住
   auto task_arg = new ReplClientWriteBinlogTaskArg(res, conn, res_private_data, bg_workers_[index].get());
   bg_workers_[index]->Schedule(&PikaReplBgWorker::HandleBGWorkerWriteBinlog, static_cast<void*>(task_arg));
 }
@@ -80,6 +82,7 @@ void PikaReplClient::ScheduleWriteDBTask(const std::shared_ptr<Cmd>& cmd_ptr, co
   std::string dispatch_key = argv.size() >= 2 ? argv[1] : argv[0];
   size_t index = GetHashIndex(dispatch_key, false);
   auto task_arg = new ReplClientWriteDBTaskArg(cmd_ptr, offset, db_name);
+// 按key分配固定线程
   bg_workers_[index]->Schedule(&PikaReplBgWorker::HandleBGWorkerWriteDB, static_cast<void*>(task_arg));
 }
 
@@ -99,11 +102,13 @@ Status PikaReplClient::SendMetaSync() {
   std::unique_ptr<net::NetCli> cli (net::NewRedisCli());
   cli->set_connect_timeout(1500);
   if ((cli->Connect(g_pika_server->master_ip(), g_pika_server->master_port(), "")).ok()) {
+//    建立了到master的tcp连接
     struct sockaddr_in laddr;
     socklen_t llen = sizeof(laddr);
     getsockname(cli->fd(), reinterpret_cast<struct sockaddr*>(&laddr), &llen);
     std::string tmp_local_ip(inet_ntoa(laddr.sin_addr));
     local_ip = tmp_local_ip;
+//    不理解，为啥刚刚建立的连接这里就要关闭呢，难不成是测试一下联通性？ 没错
     cli->Close();
   } else {
     LOG(WARNING) << "Failed to connect master, Master (" << g_pika_server->master_ip() << ":"
@@ -115,14 +120,17 @@ Status PikaReplClient::SendMetaSync() {
     return Status::Corruption("Connect master error");
   }
 
+//  使用protobuf类构造请求参数
   InnerMessage::InnerRequest request;
   request.set_type(InnerMessage::kMetaSync);
   InnerMessage::InnerRequest::MetaSync* meta_sync = request.mutable_meta_sync();
   InnerMessage::Node* node = meta_sync->mutable_node();
+//  将当前的ip和port塞进去
   node->set_ip(local_ip);
   node->set_port(g_pika_server->port());
 
   std::string masterauth = g_pika_conf->masterauth();
+//  将master密码塞进去
   if (!masterauth.empty()) {
     meta_sync->set_auth(masterauth);
   }
@@ -130,6 +138,7 @@ Status PikaReplClient::SendMetaSync() {
   std::string to_send;
   std::string master_ip = g_pika_server->master_ip();
   int master_port = g_pika_server->master_port();
+//  将请求序列化，其实没啥东西，主要就是：1 请求类型MetaSync  2 当前机器的ip和port 3 master的验证密码
   if (!request.SerializeToString(&to_send)) {
     LOG(WARNING) << "Serialize Meta Sync Request Failed, to Master (" << master_ip << ":" << master_port << ")";
     return Status::Corruption("Serialize Failed");

@@ -36,6 +36,7 @@ bool PikaBinlogReader::ReadToTheEnd() {
 }
 
 int PikaBinlogReader::Seek(const std::shared_ptr<Binlog>& logger, uint32_t filenum, uint64_t offset) {
+//  打开文件，并且seek到了对应的位置
   std::string confile = NewFileName(logger->filename(), filenum);
   if (!pstd::FileExists(confile)) {
     LOG(WARNING) << confile << " not exits";
@@ -59,6 +60,7 @@ int PikaBinlogReader::Seek(const std::shared_ptr<Binlog>& logger, uint32_t filen
 
   pstd::Status s;
   uint64_t start_block = (cur_offset_ / kBlockSize) * kBlockSize;
+//  sequential文件的偏移量跳过
   s = queue_->Skip((cur_offset_ / kBlockSize) * kBlockSize);
   uint64_t block_offset = cur_offset_ % kBlockSize;
   uint64_t ret = 0;
@@ -133,14 +135,18 @@ bool PikaBinlogReader::GetNext(uint64_t* size) {
 }
 
 unsigned int PikaBinlogReader::ReadPhysicalRecord(pstd::Slice* result, uint32_t* filenum, uint64_t* offset) {
+  //  这里边就读取了一条binlog，读取的时候只是往后读(queue_是sequential
+  //  File)，没有指定偏移量，现在读取到了哪里，全考binlogReader的curr_offset维护，存储在result内，offset内部存储的是下一条binlog的header的起始位置
   pstd::Status s;
   if (kBlockSize - last_record_offset_ <= kHeaderSize) {
+    //    如最后一条读取的记录，offset已经到了当前block的最后8字节内，跳去下一个block
     queue_->Skip(kBlockSize - last_record_offset_);
     std::lock_guard l(rwlock_);
     cur_offset_ += (kBlockSize - last_record_offset_);
     last_record_offset_ = 0;
   }
   buffer_.clear();
+  //  读取head数据到buffer
   s = queue_->Read(kHeaderSize, &buffer_, backing_store_.get());
   if (s.IsEndFile()) {
     return kEof;
@@ -154,7 +160,7 @@ unsigned int PikaBinlogReader::ReadPhysicalRecord(pstd::Slice* result, uint32_t*
   const uint32_t c = static_cast<uint32_t>(header[2]) & 0xff;
   const unsigned int type = header[7];
   const uint32_t length = a | (b << 8) | (c << 16);
-
+  //  取出binlog的长度和tag
   if (length > (kBlockSize - kHeaderSize)) {
     return kBadRecord;
   }
@@ -165,6 +171,7 @@ unsigned int PikaBinlogReader::ReadPhysicalRecord(pstd::Slice* result, uint32_t*
   }
 
   buffer_.clear();
+  //  读出binlog本体
   s = queue_->Read(length, &buffer_, backing_store_.get());
   *result = pstd::Slice(buffer_.data(), buffer_.size());
   last_record_offset_ += kHeaderSize + length;

@@ -27,17 +27,13 @@ extern PikaServer* g_pika_server;
 
 /* SyncDB */
 
-SyncDB::SyncDB(const std::string& db_name)
-    : db_info_(db_name) {}
+SyncDB::SyncDB(const std::string& db_name) : db_info_(db_name) {}
 
-std::string SyncDB::DBName() {
-  return db_info_.db_name_;
-}
+std::string SyncDB::DBName() { return db_info_.db_name_; }
 
 /* SyncMasterDB*/
 
-SyncMasterDB::SyncMasterDB(const std::string& db_name)
-    : SyncDB(db_name),  coordinator_(db_name) {}
+SyncMasterDB::SyncMasterDB(const std::string& db_name) : SyncDB(db_name), coordinator_(db_name) {}
 
 int SyncMasterDB::GetNumberOfSlaveNode() { return coordinator_.SyncPros().SlaveSize(); }
 
@@ -62,8 +58,7 @@ Status SyncMasterDB::GetSlaveNodeSession(const std::string& ip, int port, int32_
 Status SyncMasterDB::AddSlaveNode(const std::string& ip, int port, int session_id) {
   Status s = coordinator_.AddSlaveNode(ip, port, session_id);
   if (!s.ok()) {
-    LOG(WARNING) << "Add Slave Node Failed, db: " << SyncDBInfo().ToString() << ", ip_port: " << ip << ":"
-                 << port;
+    LOG(WARNING) << "Add Slave Node Failed, db: " << SyncDBInfo().ToString() << ", ip_port: " << ip << ":" << port;
     return s;
   }
   LOG(INFO) << "Add Slave Node, db: " << SyncDBInfo().ToString() << ", ip_port: " << ip << ":" << port;
@@ -73,15 +68,19 @@ Status SyncMasterDB::AddSlaveNode(const std::string& ip, int port, int session_i
 Status SyncMasterDB::RemoveSlaveNode(const std::string& ip, int port) {
   Status s = coordinator_.RemoveSlaveNode(ip, port);
   if (!s.ok()) {
-    LOG(WARNING) << "Remove Slave Node Failed, db: " << SyncDBInfo().ToString() << ", ip_port: " << ip
-                 << ":" << port;
+    LOG(WARNING) << "Remove Slave Node Failed, db: " << SyncDBInfo().ToString() << ", ip_port: " << ip << ":" << port;
     return s;
   }
   LOG(INFO) << "Remove Slave Node, DB: " << SyncDBInfo().ToString() << ", ip_port: " << ip << ":" << port;
   return Status::OK();
 }
 
-Status SyncMasterDB::ActivateSlaveBinlogSync(const std::string& ip, int port, const LogOffset& offset) {
+Status SyncMasterDB::ActivateSlaveBinlogSync(const std::string& ip, int port, const LogOffset& offset) { //这个offset是这次的ack start
+//  1 根据slave发送的ack offset，给slaveNode设置设置进度信息（slave_state = kSlaveBinlogSynv,sent_offst,acked_offset）
+//  2 打开binlog文件并且seek到对应位置（后面就可以直接读取了）
+//  3 清空syncWin和对应的WriteQueue
+//  4 一条一条读取binlog，并且构造binlogItem塞入syncWin，使用binlog数据构造writetask加WriteQueue，直到syncWin写满为止
+//  这一样只是构造待会需要回写的内容，没有实际发出resp（等auxiliy来）
   std::shared_ptr<SlaveNode> slave_ptr = GetSlaveNode(ip, port);
   if (!slave_ptr) {
     return Status::NotFound("ip " + ip + " port " + std::to_string(port));
@@ -97,8 +96,8 @@ Status SyncMasterDB::ActivateSlaveBinlogSync(const std::string& ip, int port, co
     if (!s.ok()) {
       return Status::Corruption("Init binlog file reader failed" + s.ToString());
     }
-    //Since we init a new reader, we should drop items in write queue and reset sync_window.
-    //Or the sent_offset and acked_offset will not match
+    // Since we init a new reader, we should drop items in write queue and reset sync_window.
+    // Or the sent_offset and acked_offset will not match
     g_pika_rm->DropItemInWriteQueue(ip, port);
     slave_ptr->sync_win.Reset();
     slave_ptr->b_state = kReadFromFile;
@@ -141,6 +140,7 @@ Status SyncMasterDB::ActivateSlaveDbSync(const std::string& ip, int port) {
 }
 
 Status SyncMasterDB::ReadBinlogFileToWq(const std::shared_ptr<SlaveNode>& slave_ptr) {
+  //  窗口里还剩下多少容量？
   int cnt = slave_ptr->sync_win.Remaining();
   std::shared_ptr<PikaBinlogReader> reader = slave_ptr->binlog_reader;
   if (!reader) {
@@ -148,6 +148,7 @@ Status SyncMasterDB::ReadBinlogFileToWq(const std::shared_ptr<SlaveNode>& slave_
   }
   std::vector<WriteTask> tasks;
   for (int i = 0; i < cnt; ++i) {
+    // win中还剩多少个，就取出多少条binlog塞入win，winItem只存储BinlogOffset，而物理binlog则构造了WriteTask到了g_pika_rm的WriteQueue中(binlog发生的是值拷贝)
     std::string msg;
     uint32_t filenum;
     uint64_t offset;
@@ -156,22 +157,27 @@ Status SyncMasterDB::ReadBinlogFileToWq(const std::shared_ptr<SlaveNode>& slave_
                 << " total binlog size in sync window is :" << slave_ptr->sync_win.GetTotalBinlogSize();
       break;
     }
+    //    取下一条binlog，并且返回这条binlog的filenum和offset
     Status s = reader->Get(&msg, &filenum, &offset);
     if (s.IsEndFile()) {
+      //      如果返回IsEndFile，说明没读取到东西，直接跳出循环了
       break;
     } else if (s.IsCorruption() || s.IsIOError()) {
       LOG(WARNING) << SyncDBInfo().ToString() << " Read Binlog error : " << s.ToString();
       return s;
     }
     BinlogItem item;
+    //    除了cmd生成的str，其他的先读出来
     if (!PikaBinlogTransverter::BinlogItemWithoutContentDecode(TypeFirst, msg, &item)) {
       LOG(WARNING) << "Binlog item decode failed";
       return Status::Corruption("Binlog item decode failed");
     }
     BinlogOffset sent_b_offset = BinlogOffset(filenum, offset);
     LogicOffset sent_l_offset = LogicOffset(item.term_id(), item.logic_id());
+    //    还原出这条binlog的LogOffset,他会被更新为最新的sent_offset
     LogOffset sent_offset(sent_b_offset, sent_l_offset);
 
+    //    往syncWin尾巴上塞了binlog item,同时也构造了writeTask（给除了slave ip&port dbName,还将binlog值复制进去了）
     slave_ptr->sync_win.Push(SyncWinItem(sent_offset, msg.size()));
     slave_ptr->SetLastSendTime(pstd::NowMicros());
     RmNode rm_node(slave_ptr->Ip(), slave_ptr->Port(), slave_ptr->DBName(), slave_ptr->SessionId());
@@ -186,7 +192,8 @@ Status SyncMasterDB::ReadBinlogFileToWq(const std::shared_ptr<SlaveNode>& slave_
   return Status::OK();
 }
 
-Status SyncMasterDB::ConsensusUpdateSlave(const std::string& ip, int port, const LogOffset& start, const LogOffset& end) {
+Status SyncMasterDB::ConsensusUpdateSlave(const std::string& ip, int port, const LogOffset& start,
+                                          const LogOffset& end) {
   Status s = coordinator_.UpdateSlave(ip, port, start, end);
   if (!s.ok()) {
     LOG(WARNING) << SyncDBInfo().ToString() << s.ToString();
@@ -225,11 +232,16 @@ Status SyncMasterDB::GetSlaveState(const std::string& ip, int port, SlaveState* 
 
 Status SyncMasterDB::WakeUpSlaveBinlogSync() {
   std::unordered_map<std::string, std::shared_ptr<SlaveNode>> slaves = GetAllSlaveNodes();
+  //  这个slaveNode内部存储的主要是同步进度的信息，没有网络EndPoint信息
   std::vector<std::shared_ptr<SlaveNode>> to_del;
   for (auto& slave_iter : slaves) {
     std::shared_ptr<SlaveNode> slave_ptr = slave_iter.second;
     std::lock_guard l(slave_ptr->slave_mu);
+    //    如果发出去的全部收到了，ReadBinlogToWq,否则没有行为
     if (slave_ptr->sent_offset == slave_ptr->acked_offset) {
+      //  sent_offset之前发出去的最后一个，acked_offset是slave确认收到的最后一个
+      //  如果发出去的全部都收到了，就读取下一条文件中的binlog，将其offset放在syncWin，将slave ip&port +
+      //  binlog构造为writeTask
       Status s = ReadBinlogFileToWq(slave_ptr);
       if (!s.ok()) {
         to_del.push_back(slave_ptr);
@@ -301,6 +313,7 @@ bool SyncMasterDB::BinlogCloudPurge(uint32_t index) {
         return false;
       } else if (slave_ptr->slave_state == SlaveState::kSlaveBinlogSync) {
         if (index >= slave_ptr->acked_offset.b_offset.filenum) {
+//          如果从节点还需要消费，就不能purge
           return false;
         }
       }
@@ -313,6 +326,7 @@ Status SyncMasterDB::CheckSyncTimeout(uint64_t now) {
   std::unordered_map<std::string, std::shared_ptr<SlaveNode>> slaves = GetAllSlaveNodes();
 
   std::vector<Node> to_del;
+//  如果从超过20s没有给我发消息，删掉它
   for (auto& slave_iter : slaves) {
     std::shared_ptr<SlaveNode> slave_ptr = slave_iter.second;
     std::lock_guard l(slave_ptr->slave_mu);
@@ -320,6 +334,10 @@ Status SyncMasterDB::CheckSyncTimeout(uint64_t now) {
       to_del.emplace_back(slave_ptr->Ip(), slave_ptr->Port());
     } else if (slave_ptr->LastSendTime() + kSendKeepAliveTimeout < now &&
                slave_ptr->sent_offset == slave_ptr->acked_offset) {
+//      从节点如果上一次给我发消息是在20s内，并且我之前发的binlog从节点都收到了，为了保活，每2s我给slave们发一次空包。从会响应，我就能保活
+//      也就是超时过了20s都不会发心跳了
+//      也就是在正常的binlog来往中，每2s会有一个空包作为心跳
+
       std::vector<WriteTask> task;
       RmNode rm_node(slave_ptr->Ip(), slave_ptr->Port(), slave_ptr->DBName(), slave_ptr->SessionId());
       WriteTask empty_task(rm_node, BinlogChip(LogOffset(), ""), LogOffset());
@@ -363,8 +381,7 @@ int32_t SyncMasterDB::GenSessionId() {
   return session_id_++;
 }
 
-bool SyncMasterDB::CheckSessionId(const std::string& ip, int port, const std::string& db_name,
-                                  int session_id) {
+bool SyncMasterDB::CheckSessionId(const std::string& ip, int port, const std::string& db_name, int session_id) {
   std::shared_ptr<SlaveNode> slave_ptr = GetSlaveNode(ip, port);
   if (!slave_ptr) {
     LOG(WARNING) << "Check SessionId Get Slave Node Error: " << ip << ":" << port << "," << db_name;
@@ -401,8 +418,7 @@ std::unordered_map<std::string, std::shared_ptr<SlaveNode>> SyncMasterDB::GetAll
 }
 
 /* SyncSlaveDB */
-SyncSlaveDB::SyncSlaveDB(const std::string& db_name)
-    : SyncDB(db_name) {
+SyncSlaveDB::SyncSlaveDB(const std::string& db_name) : SyncDB(db_name) {
   std::string dbsync_path = g_pika_conf->db_sync_path() + "/" + db_name;
   rsync_cli_.reset(new rsync::RsyncClient(dbsync_path, db_name));
   m_info_.SetLastRecvTime(pstd::NowMicros());
@@ -433,6 +449,8 @@ Status SyncSlaveDB::CheckSyncTimeout(uint64_t now) {
   if (repl_state_ != ReplState::kWaitDBSync && repl_state_ != ReplState::kConnected) {
     return Status::OK();
   }
+//  只有处于waitDBSync或者Connected状态才会下来这里
+//  从主要是检查心跳包有没有超时，如果主超过2s没有给我消息，我就自己转为TryConnect，发TrySync
   if (m_info_.LastRecvTime() + kRecvKeepAliveTimeout < now) {
     // update slave state to kTryConnect, and try reconnect to master node
     repl_state_ = ReplState::kTryConnect;
@@ -498,9 +516,7 @@ std::string SyncSlaveDB::LocalIp() {
   return local_ip_;
 }
 
-void SyncSlaveDB::StopRsync() {
-  rsync_cli_->Stop();
-}
+void SyncSlaveDB::StopRsync() { rsync_cli_->Stop(); }
 
 pstd::Status SyncSlaveDB::ActivateRsync() {
   Status s = Status::OK();
@@ -513,7 +529,8 @@ pstd::Status SyncSlaveDB::ActivateRsync() {
     return s;
   } else {
     SetReplState(ReplState::kError);
-    return Status::Error("rsync client init failed!");;
+    return Status::Error("rsync client init failed!");
+    ;
   }
 }
 
@@ -578,24 +595,31 @@ void PikaReplicaManager::ProduceWriteQueue(const std::string& ip, int port, std:
   std::lock_guard l(write_queue_mu_);
   std::string index = ip + ":" + std::to_string(port);
   for (auto& task : tasks) {
+    //    每个slave的每个db都有个write_queue
     write_queues_[index][db_name].push(task);
   }
 }
 
 int PikaReplicaManager::ConsumeWriteQueue() {
+  //  最内层的vector就是一个writeTask的Batch，每个batch目标都是同一个slave的同一个DB
+  // 外层的vector是因为一个slave有多个DB，这里省略了DBname的结构而已
   std::unordered_map<std::string, std::vector<std::vector<WriteTask>>> to_send_map;
   int counter = 0;
   {
     std::lock_guard l(write_queue_mu_);
+    //    遍历每一个slave的queues
     for (auto& iter : write_queues_) {
       const std::string& ip_port = iter.first;
       std::unordered_map<std::string, std::queue<WriteTask>>& p_map = iter.second;
+      //      遍历当期slave的每个db的queue
       for (auto& db_queue : p_map) {
         std::queue<WriteTask>& queue = db_queue.second;
         for (int i = 0; i < kBinlogSendPacketNum; ++i) {
           if (queue.empty()) {
+            //            如果这个队列为空，直接跳过
             break;
           }
+          //          一个batch最多kBinlogSendBatchNum个
           size_t batch_index = queue.size() > kBinlogSendBatchNum ? kBinlogSendBatchNum : queue.size();
           std::vector<WriteTask> to_send;
           size_t batch_size = 0;
@@ -610,6 +634,7 @@ int PikaReplicaManager::ConsumeWriteQueue() {
             queue.pop();
             counter++;
           }
+          //          上面总的来说就是从列队里pop任务出来构成batch，batch的个数和总大小都有一定限制
           if (!to_send.empty()) {
             to_send_map[ip_port].push_back(std::move(to_send));
           }
@@ -620,6 +645,7 @@ int PikaReplicaManager::ConsumeWriteQueue() {
 
   std::vector<std::string> to_delete;
   for (auto& iter : to_send_map) {
+    //    遍历每个slave的多个batch，取得其ip和port
     std::string ip;
     int port = 0;
     if (!pstd::ParseIpPortString(iter.first, ip, port)) {
@@ -627,8 +653,10 @@ int PikaReplicaManager::ConsumeWriteQueue() {
       continue;
     }
     for (auto& to_send : iter.second) {
+      //      再遍历这个slave的多个vectory（多个batch），此次send一整个batch（多个WriteTask）
       Status s = pika_repl_server_->SendSlaveBinlogChips(ip, port, to_send);
       if (!s.ok()) {
+        //        但凡有任何一个batch发送失败，都要登记一下是哪个slave（ip&port）
         LOG(WARNING) << "send binlog to " << ip << ":" << port << " failed, " << s.ToString();
         to_delete.push_back(iter.first);
         continue;
@@ -639,9 +667,11 @@ int PikaReplicaManager::ConsumeWriteQueue() {
   if (!to_delete.empty()) {
     std::lock_guard l(write_queue_mu_);
     for (auto& del_queue : to_delete) {
+      //      存在发送失败情况的slave需要从write_queue整个抹除其writeQueue
       write_queues_.erase(del_queue);
     }
   }
+  //  这个counter返回的是：跨越多个slave，这个comsume行为一共从writequeue取出了多少writeTask（并不意味着成功发送了这么多）
   return counter;
 }
 
@@ -683,6 +713,7 @@ Status PikaReplicaManager::UpdateSyncBinlogStatus(const RmNode& slave, const Log
     return Status::NotFound(slave.ToString() + " not found");
   }
   std::shared_ptr<SyncMasterDB> db = sync_master_dbs_[slave.NodeDBInfo()];
+//  更新了matched_index以及acked_offset
   Status s = db->ConsensusUpdateSlave(slave.Ip(), slave.Port(), offset_start, offset_end);
   if (!s.ok()) {
     return s;
@@ -700,8 +731,7 @@ bool PikaReplicaManager::CheckSlaveDBState(const std::string& ip, const int port
     db = iter.second;
     if (db->State() == ReplState::kDBNoConnect && db->MasterIp() == ip &&
         db->MasterPort() + kPortShiftReplServer == port) {
-      LOG(INFO) << "DB: " << db->SyncDBInfo().ToString()
-                << " has been dbslaveof no one, then will not try reconnect.";
+      LOG(INFO) << "DB: " << db->SyncDBInfo().ToString() << " has been dbslaveof no one, then will not try reconnect.";
       return false;
     }
   }
@@ -730,6 +760,7 @@ Status PikaReplicaManager::LostConnection(const std::string& ip, int port) {
 Status PikaReplicaManager::WakeUpBinlogSync() {
   std::shared_lock l(dbs_rw_);
   for (auto& iter : sync_master_dbs_) {
+    //    对于每个sync_master_db,都来一次wakeup
     std::shared_ptr<SyncMasterDB> db = iter.second;
     Status s = db->WakeUpSlaveBinlogSync();
     if (!s.ok()) {
@@ -764,14 +795,13 @@ Status PikaReplicaManager::CheckDBRole(const std::string& db, int* role) {
   *role = 0;
   DBInfo p_info(db);
   if (sync_master_dbs_.find(p_info) == sync_master_dbs_.end()) {
-    return Status::NotFound(db  + " not found");
+    return Status::NotFound(db + " not found");
   }
   if (sync_slave_dbs_.find(p_info) == sync_slave_dbs_.end()) {
     return Status::NotFound(db + " not found");
   }
   if (sync_master_dbs_[p_info]->GetNumberOfSlaveNode() != 0 ||
-      (sync_master_dbs_[p_info]->GetNumberOfSlaveNode() == 0 &&
-       sync_slave_dbs_[p_info]->State() == kNoConnect)) {
+      (sync_master_dbs_[p_info]->GetNumberOfSlaveNode() == 0 && sync_slave_dbs_[p_info]->State() == kNoConnect)) {
     *role |= PIKA_ROLE_MASTER;
   }
   if (sync_slave_dbs_[p_info]->State() != ReplState::kNoConnect) {
@@ -822,6 +852,8 @@ Status PikaReplicaManager::SendMetaSyncRequest() {
   Status s;
   if (time(nullptr) - g_pika_server->GetMetaSyncTimestamp() >= PIKA_META_SYNC_MAX_WAIT_TIME ||
       g_pika_server->IsFirstMetaSync()) {
+    //    有两种情况会发送metaSync请求：1 刚刚执行了salve of， fistMetaSync为true（没发过metaSyncRequest）  2
+    //    上次发SyncMeta到现在已经超时（状态还是Should_META_SYNC,说明没收到响应）
     s = pika_repl_client_->SendMetaSync();
     if (s.ok()) {
       g_pika_server->UpdateMetaSyncTimestamp();
@@ -853,8 +885,10 @@ Status PikaReplicaManager::SendRemoveSlaveNodeRequest(const std::string& db) {
   return s;
 }
 
+//slave会使用的函数
 Status PikaReplicaManager::SendTrySyncRequest(const std::string& db_name) {
   BinlogOffset boffset;
+//  获取自己最新的binlogOffset 来告诉master我要拉哪些binlog
   if (!g_pika_server->GetDBBinlogOffset(db_name, &boffset)) {
     LOG(WARNING) << "DB: " << db_name << ", Get DB binlog offset failed";
     return Status::Corruption("DB get binlog offset error");
@@ -866,9 +900,8 @@ Status PikaReplicaManager::SendTrySyncRequest(const std::string& db_name) {
     return Status::Corruption("Slave DB not found");
   }
 
-  Status status =
-      pika_repl_client_->SendTrySync(slave_db->MasterIp(), slave_db->MasterPort(), db_name,
-                                     boffset, slave_db->LocalIp());
+  Status status = pika_repl_client_->SendTrySync(slave_db->MasterIp(), slave_db->MasterPort(), db_name, boffset,
+                                                 slave_db->LocalIp());
 
   if (status.ok()) {
     slave_db->SetReplState(ReplState::kWaitReply);
@@ -881,6 +914,7 @@ Status PikaReplicaManager::SendTrySyncRequest(const std::string& db_name) {
 
 Status PikaReplicaManager::SendDBSyncRequest(const std::string& db_name) {
   BinlogOffset boffset;
+  //  获取该db最新的offset
   if (!g_pika_server->GetDBBinlogOffset(db_name, &boffset)) {
     LOG(WARNING) << "DB: " << db_name << ", Get DB binlog offset failed";
     return Status::Corruption("DB get binlog offset error");
@@ -891,6 +925,7 @@ Status PikaReplicaManager::SendDBSyncRequest(const std::string& db_name) {
     LOG(WARNING) << "DB: " << db_name << " NotFound";
     return Status::Corruption("DB not found");
   }
+  //  先建立一个dbsync_path(=conf.dbsyncPath+dbname)文件夹，然后给该DB的每个实例都建立一个文件夹（1，2，3...).如果发现存在旧的dbsync_path，就删除掉
   db->PrepareRsync();
 
   std::shared_ptr<SyncSlaveDB> slave_db = GetSyncSlaveDBByName(DBInfo(db_name));
@@ -899,11 +934,12 @@ Status PikaReplicaManager::SendDBSyncRequest(const std::string& db_name) {
     return Status::Corruption("Slave DB not found");
   }
 
-  Status status = pika_repl_client_->SendDBSync(slave_db->MasterIp(), slave_db->MasterPort(),
-                                                    db_name, boffset, slave_db->LocalIp());
+  Status status = pika_repl_client_->SendDBSync(slave_db->MasterIp(), slave_db->MasterPort(), db_name, boffset,
+                                                slave_db->LocalIp());
 
   Status s;
   if (status.ok()) {
+    //    发送完全量请求以后，就会陷入kWaitReply状态
     slave_db->SetReplState(ReplState::kWaitReply);
   } else {
     slave_db->SetReplState(ReplState::kError);
@@ -922,8 +958,8 @@ Status PikaReplicaManager::SendBinlogSyncAckRequest(const std::string& db, const
     LOG(WARNING) << "Slave DB: " << db << ":, NotFound";
     return Status::Corruption("Slave DB not found");
   }
-  return pika_repl_client_->SendBinlogSync(slave_db->MasterIp(), slave_db->MasterPort(), db,
-                                           ack_start, ack_end, slave_db->LocalIp(), is_first_send);
+  return pika_repl_client_->SendBinlogSync(slave_db->MasterIp(), slave_db->MasterPort(), db, ack_start, ack_end,
+                                           slave_db->LocalIp(), is_first_send);
 }
 
 Status PikaReplicaManager::CloseReplClientConn(const std::string& ip, int32_t port) {
@@ -952,28 +988,35 @@ std::shared_ptr<SyncSlaveDB> PikaReplicaManager::GetSyncSlaveDBByName(const DBIn
 }
 
 Status PikaReplicaManager::RunSyncSlaveDBStateMachine() {
+  //  对于从节点来说，会100ms进来一次
   std::shared_lock l(dbs_rw_);
+  // 当metasync完成了才会进来，此时网络连接已经建立，并且sync_slave_db,这些保存了每个db的作为从的repl_state
   for (const auto& item : sync_slave_dbs_) {
     DBInfo p_info = item.first;
     std::shared_ptr<SyncSlaveDB> s_db = item.second;
-    if (s_db->State() == ReplState::kTryConnect) {
+    if (s_db->State() == ReplState::kTryConnect) { //处于TryConnect说明是需要binlog同步
       SendTrySyncRequest(p_info.db_name_);
     } else if (s_db->State() == ReplState::kTryDBSync) {
+      //      如果处理metasync resp时发现replicationID不同，就会来到这个状态，这里就需要全量同步了
       SendDBSyncRequest(p_info.db_name_);
     } else if (s_db->State() == ReplState::kWaitReply) {
+//      发送了TrySync请求（请求拉binlog）后，在收到response之前就会进来这里
       continue;
     } else if (s_db->State() == ReplState::kWaitDBSync) {
+      //      这是在等待全量同步吗？ 没错
+      //      这里面会用rsync自动去链接master
       Status s = s_db->ActivateRsync();
       if (!s.ok()) {
         g_pika_server->SetForceFullSync(true);
         LOG(WARNING) << "Slave DB: " << s_db->DBName() << " rsync failed! full synchronization will be retried later";
         continue;
       }
-
-      std::shared_ptr<DB> db =
-          g_pika_server->GetDB(p_info.db_name_);
+      std::shared_ptr<DB> db = g_pika_server->GetDB(p_info.db_name_);
       if (db) {
-        if (!s_db->IsRsyncRunning()) {
+        if (!s_db->IsRsyncRunning()) { //到了这里是否意味着全量副本已经拉过来了? 是的
+//          1 使用rsync拉过来的文件，做rocksdb实例的reopen
+//          2 会读取info文件，手动将master做bgsave时的binlog Offset设置为自己最新的binlog offset
+//          3 状态修改为kTryConnect
           db->TryUpdateMasterOffset();
         }
       } else {
@@ -1016,14 +1059,12 @@ void PikaReplicaManager::RmStatus(std::string* info) {
   tmp_stream << "Master DB(" << sync_master_dbs_.size() << "):"
              << "\r\n";
   for (auto& iter : sync_master_dbs_) {
-    tmp_stream << " DB " << iter.second->SyncDBInfo().ToString() << "\r\n"
-               << iter.second->ToStringStatus() << "\r\n";
+    tmp_stream << " DB " << iter.second->SyncDBInfo().ToString() << "\r\n" << iter.second->ToStringStatus() << "\r\n";
   }
   tmp_stream << "Slave DB(" << sync_slave_dbs_.size() << "):"
              << "\r\n";
   for (auto& iter : sync_slave_dbs_) {
-    tmp_stream << " DB " << iter.second->SyncDBInfo().ToString() << "\r\n"
-               << iter.second->ToStringStatus() << "\r\n";
+    tmp_stream << " DB " << iter.second->SyncDBInfo().ToString() << "\r\n" << iter.second->ToStringStatus() << "\r\n";
   }
   info->append(tmp_stream.str());
 }

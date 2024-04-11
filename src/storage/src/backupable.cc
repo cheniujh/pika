@@ -19,6 +19,7 @@ BackupEngine::~BackupEngine() {
 
 Status BackupEngine::NewCheckpoint(rocksdb::DB* rocksdb_db, int index) {
   rocksdb::DBCheckpoint* checkpoint;
+//  拿着实例指针去创建checkpoint，似乎还没有打快照
   Status s = rocksdb::DBCheckpoint::Create(rocksdb_db, &checkpoint);
   if (!s.ok()) {
     return s;
@@ -59,6 +60,7 @@ Status BackupEngine::SetBackupContent() {
   for (const auto& engine : engines_) {
     // Get backup content
     BackupContent bcontent;
+//    这里他妈的其实就是打快照
     s = engine.second->GetCheckpointFiles(bcontent.live_files, bcontent.live_wal_files, bcontent.manifest_file_size,
                                           bcontent.sequence_number);
     if (!s.ok()) {
@@ -76,6 +78,7 @@ Status BackupEngine::CreateNewBackupSpecify(const std::string& backup_dir, int i
   delete_dir(dir.c_str());
 
   if (it_content != backup_content_.end() && it_engine != engines_.end()) {
+//    拿到对应的checkpoint，建立硬链接
     Status s = it_engine->second->CreateCheckpointWithFiles(
         dir, it_content->second.live_files, it_content->second.live_wal_files, it_content->second.manifest_file_size,
         it_content->second.sequence_number);
@@ -123,6 +126,7 @@ Status BackupEngine::CreateNewBackup(const std::string& dir) {
     pthread_t tid;
     auto arg = std::make_unique<BackupSaveArgs>(reinterpret_cast<void*>(this), dir, engine.first);
     args.push_back(std::move(arg));
+//    新建立线程来做硬链接
     if (pthread_create(&tid, nullptr, &ThreadFuncSaveSpecify, args.back().get()) != 0) {
       s = Status::Corruption("pthread_create failed.");
       break;
