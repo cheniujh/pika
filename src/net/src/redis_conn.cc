@@ -176,9 +176,11 @@ void RedisConn::TryResizeBuffer() {
   if (rbuf_len_ > REDIS_MBULK_BIG_ARG && ((rbuf_len_ / (msg_peak_ + 1)) > 2 || idletime > 2)) {
     int new_size = ((last_read_pos_ + REDIS_IOBUF_LEN) / REDIS_IOBUF_LEN) * REDIS_IOBUF_LEN;
     if (new_size < rbuf_len_) {
+
+//      LOG(INFO) << "old buf size: " << rbuf_len_ << ", last_read_pos_: " << last_read_pos_;
       rbuf_ = static_cast<char*>(realloc(rbuf_, new_size));
       rbuf_len_ = new_size;
-      LOG(INFO) << "Resize buffer to " << rbuf_len_ << ", last_read_pos_: " << last_read_pos_;
+//      LOG(INFO) << "Resize buffer to " << rbuf_len_ << ", last_read_pos_: " << last_read_pos_;
     }
     msg_peak_ = 0;
   }

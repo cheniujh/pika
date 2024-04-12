@@ -188,6 +188,7 @@ std::shared_ptr<Cmd> PikaClientConn::DoCmd(const PikaCmdArgsType& argv, const st
 
   // Process Command
   c_ptr->Execute();
+  g_pika_server->master_qps.fetch_add(1, std::memory_order::memory_order_relaxed);
   time_stat_->process_done_ts_ = pstd::NowMicros();
   auto cmdstat_map = g_pika_cmd_table_manager->GetCommandStatMap();
   (*cmdstat_map)[opt].cmd_count.fetch_add(1);

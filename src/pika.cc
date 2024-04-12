@@ -4,23 +4,23 @@
 // of patent rights can be found in the PATENTS file in the same directory.
 
 #include <glog/logging.h>
+#include <memory.h>
 #include <sys/resource.h>
 #include <csignal>
-#include <memory.h>
 
-#include "net/include/net_stats.h"
-#include "pstd/include/pika_codis_slot.h"
-#include "include/pika_define.h"
-#include "pstd/include/pstd_defer.h"
-#include "include/pika_conf.h"
-#include "pstd/include/env.h"
-#include "include/pika_cmd_table_manager.h"
-#include "include/pika_slot_command.h"
 #include "include/build_version.h"
+#include "include/pika_cmd_table_manager.h"
 #include "include/pika_command.h"
-#include "include/pika_server.h"
-#include "include/pika_version.h"
+#include "include/pika_conf.h"
+#include "include/pika_define.h"
 #include "include/pika_rm.h"
+#include "include/pika_server.h"
+#include "include/pika_slot_command.h"
+#include "include/pika_version.h"
+#include "net/include/net_stats.h"
+#include "pstd/include/env.h"
+#include "pstd/include/pika_codis_slot.h"
+#include "pstd/include/pstd_defer.h"
 
 std::unique_ptr<PikaConf> g_pika_conf;
 // todo : change to unique_ptr will coredump
@@ -43,15 +43,16 @@ static void version() {
 }
 
 static void PrintPikaLogo() {
-  printf("   .............          ....     .....       .....           .....         \n"
-         "   #################      ####     #####      #####           #######        \n"
-         "   ####         #####     ####     #####    #####            #########       \n"
-         "   ####          #####    ####     #####  #####             ####  #####      \n"
-         "   ####         #####     ####     ##### #####             ####    #####     \n"
-         "   ################       ####     ##### #####            ####      #####    \n"
-         "   ####                   ####     #####   #####         #################   \n"
-         "   ####                   ####     #####    ######      #####         #####  \n"
-         "   ####                   ####     #####      ######   #####           ##### \n");
+  printf(
+      "   .............          ....     .....       .....           .....         \n"
+      "   #################      ####     #####      #####           #######        \n"
+      "   ####         #####     ####     #####    #####            #########       \n"
+      "   ####          #####    ####     #####  #####             ####  #####      \n"
+      "   ####         #####     ####     ##### #####             ####    #####     \n"
+      "   ################       ####     ##### #####            ####      #####    \n"
+      "   ####                   ####     #####   #####         #################   \n"
+      "   ####                   ####     #####    ######      #####         #####  \n"
+      "   ####                   ####     #####      ######   #####           ##### \n");
 }
 
 static void PikaConfInit(const std::string& path) {
@@ -86,7 +87,7 @@ static void daemonize() {
   if (fork()) {
     exit(0); /* parent exits */
   }
-  setsid(); /* create a new session */
+  setsid();  /* create a new session */
 }
 
 static void close_std() {

@@ -347,7 +347,7 @@ void PikaReplServerConn::HandleBinlogSyncRequest(void* arg) {
       conn->NotifyClose();
       return;
     }
-
+//    第一次的话会直接清空队列，重新往窗口填充
     Status s = master_db->ActivateSlaveBinlogSync(node.ip(), node.port(), range_start);
     if (!s.ok()) {
       LOG(WARNING) << "Activate Binlog Sync failed " << slave_node.ToString() << " " << s.ToString();
@@ -364,6 +364,7 @@ void PikaReplServerConn::HandleBinlogSyncRequest(void* arg) {
   }
   s = g_pika_rm->UpdateSyncBinlogStatus(slave_node, range_start, range_end);
   if (!s.ok()) {
+//    如果slave超时了20s，就会导致slaveNode被抹去，进而直接切掉连接，什么也不回复（不处理这个binlogSync了）
     LOG(WARNING) << "Update binlog ack failed " << db_name << " " << s.ToString();
     conn->NotifyClose();
     return;

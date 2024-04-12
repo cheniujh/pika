@@ -345,7 +345,7 @@ Status ConsensusCoordinator::ProcessLeaderLog(const std::shared_ptr<Cmd>& cmd_pt
                  << attribute.logic_id() << " cur last index " << last_index.l_offset.index;
     return Status::OK();
   }
-
+//  当前还在第一个 bg worker线程
   Status s = InternalAppendLog(cmd_ptr);
 
   InternalApplyFollower(MemLog::LogItem(LogOffset(), cmd_ptr, nullptr, nullptr));

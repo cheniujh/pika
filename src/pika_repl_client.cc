@@ -80,6 +80,7 @@ void PikaReplClient::ScheduleWriteDBTask(const std::shared_ptr<Cmd>& cmd_ptr, co
   std::string dispatch_key = argv.size() >= 2 ? argv[1] : argv[0];
   size_t index = GetHashIndex(dispatch_key, false);
   auto task_arg = new ReplClientWriteDBTaskArg(cmd_ptr, offset, db_name);
+//  这里分发到另外一个bgworker线程
   bg_workers_[index]->Schedule(&PikaReplBgWorker::HandleBGWorkerWriteDB, static_cast<void*>(task_arg));
 }
 
