@@ -248,18 +248,16 @@ void PikaReplClientConn::DispatchBinlogRes(const std::shared_ptr<InnerMessage::I
     }
     par_binlog[p_info]->push_back(i);
   }
-  LOG(INFO) << "Slave Get binlog chip, from " << par_binlog.size() << " DBs";
+//  LOG(INFO) << "Slave Get binlog chip, from " << par_binlog.size() << " DBs";
     auto size = res->binlog_sync_size();
-    if (size > 0) {
-        auto start_fnum = res->binlog_sync(0).binlog_offset().filenum();
-        auto start_off = res->binlog_sync(0).binlog_offset().offset();
-        auto end_fnum = res->binlog_sync(size - 1).binlog_offset().filenum();
-        auto end_off = res->binlog_sync(size - 1).binlog_offset().offset();
-        LOG(INFO) << "DB " << res->binlog_sync(0).slot().db_name() << " Slave Recved BinlogChip: start: " << start_fnum << ", " << start_off << "; End: " << end_fnum
-                  << ", " << end_off;
-    } else {
-        LOG(INFO) << "Slave Get an binlogChips that size is 0, maybe for heart beat";
-    }
+    assert(size > 0);
+    auto start_fnum = res->binlog_sync(0).binlog_offset().filenum();
+    auto start_off = res->binlog_sync(0).binlog_offset().offset();
+    auto end_fnum = res->binlog_sync(size - 1).binlog_offset().filenum();
+    auto end_off = res->binlog_sync(size - 1).binlog_offset().offset();
+    LOG(INFO) << "DB " << res->binlog_sync(0).slot().db_name() << " Slave Recved BinlogChip: start: " << start_fnum
+              << ", " << start_off << "; End: " << end_fnum
+              << ", " << end_off;
   std::shared_ptr<SyncSlaveDB> slave_db;
   for (auto& binlog_nums : par_binlog) {
     RmNode node(binlog_nums.first.db_name_);
