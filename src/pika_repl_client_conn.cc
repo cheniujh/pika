@@ -255,7 +255,7 @@ void PikaReplClientConn::DispatchBinlogRes(const std::shared_ptr<InnerMessage::I
         auto start_off = res->binlog_sync(0).binlog_offset().offset();
         auto end_fnum = res->binlog_sync(size - 1).binlog_offset().filenum();
         auto end_off = res->binlog_sync(size - 1).binlog_offset().offset();
-        LOG(INFO) << "Slave Recved BinlogChip: start: " << start_fnum << ", " << start_off << "; End: " << end_fnum
+        LOG(INFO) << "DB " << res->binlog_sync(0).slot().db_name() << " Slave Recved BinlogChip: start: " << start_fnum << ", " << start_off << "; End: " << end_fnum
                   << ", " << end_off;
     } else {
         LOG(INFO) << "Slave Get an binlogChips that size is 0, maybe for heart beat";
