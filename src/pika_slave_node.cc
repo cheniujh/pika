@@ -17,7 +17,7 @@ void SyncWindow::Push(const SyncWinItem& item) {
   total_size_ += item.binlog_size_;
 }
 
-bool SyncWindow::Update(const SyncWinItem& start_item, const SyncWinItem& end_item, LogOffset* acked_offset) {
+bool SyncWindow::Update(const SyncWinItem& start_item, const SyncWinItem& end_item, LogOffset* acked_offset, std::string & dbname) {
   size_t start_pos = win_.size();
   size_t end_pos = win_.size();
   for (size_t i = 0; i < win_.size(); ++i) {
@@ -40,8 +40,18 @@ bool SyncWindow::Update(const SyncWinItem& start_item, const SyncWinItem& end_it
     win_[i].acked_ = true;
     total_size_ -= win_[i].binlog_size_;
   }
+  uint32_t head_fnum = -1;
+  uint64_t head_offset = -1;
+  if(!win_.empty()){
+      head_fnum = win_[0].offset_.b_offset.filenum;
+      head_offset = win_[0].offset_.b_offset.offset;
+  }
+  LOG(INFO) << dbname << " Master Has marked in syncWin from " << win_[start_pos].offset_.b_offset.filenum << ", "
+              << win_[start_pos].offset_.b_offset.offset << " To " << win_[end_pos].offset_.b_offset.filenum << ", "
+              << win_[end_pos].offset_.b_offset.offset << "; Curr head of syncWin(before pop) is " << head_fnum << ", " << head_offset;
   while (!win_.empty()) {
     if (win_[0].acked_) {
+//传出的这个offset，是实际发生出队行为后，最后一个出队的binlog的offset，如果没有发生出队（后发的binlogbatch响应先返回了，这个值就先不会变，因为这里pop必须从头开始）
       *acked_offset = win_[0].offset_;
       win_.pop_front();
     } else {
@@ -92,7 +102,7 @@ Status SlaveNode::Update(const LogOffset& start, const LogOffset& end, LogOffset
     return Status::Corruption(ToString() + "state not BinlogSync");
   }
   *updated_offset = LogOffset();
-  bool res = sync_win.Update(SyncWinItem(start), SyncWinItem(end), updated_offset);
+  bool res = sync_win.Update(SyncWinItem(start), SyncWinItem(end), updated_offset, DBName());
   if (!res) {
     return Status::Corruption("UpdateAckedInfo failed");
   }
