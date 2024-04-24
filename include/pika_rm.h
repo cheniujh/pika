@@ -154,6 +154,10 @@ public:
         SetFnum(other.fnum_);
         SetOffset(other.offset_);
     }
+    LastTaskBinlogOffst& operator=(const LastTaskBinlogOffst& other){
+        SetFnum(other.fnum_);
+        SetOffset(other.offset_);
+    }
     uint32_t GetFnum() {
         std::lock_guard guard(mu_);
         return fnum_;
@@ -177,7 +181,7 @@ private:
 };
 class PikaReplicaManager {
  public:
-  std::vector<LastTaskBinlogOffst> last_send_binlog_;
+  std::map<std::string, LastTaskBinlogOffst> last_send_binlog_;
   PikaReplicaManager();
   ~PikaReplicaManager() = default;
   friend Cmd;

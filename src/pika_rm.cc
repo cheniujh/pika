@@ -530,10 +530,6 @@ pstd::Status SyncSlaveDB::ActivateRsync() {
 /* PikaReplicaManger */
 
 PikaReplicaManager::PikaReplicaManager() {
-    for (int i = 0; i < 8; i++){
-        LastTaskBinlogOffst last;
-        last_send_binlog_.push_back(last);
-    }
   std::set<std::string> ips;
   ips.insert("0.0.0.0");
   int port = g_pika_conf->port() + kPortShiftReplServer;
@@ -584,6 +580,8 @@ void PikaReplicaManager::InitDB() {
     const std::string& db_name = db.db_name;
     sync_master_dbs_[DBInfo(db_name)] = std::make_shared<SyncMasterDB>(db_name);
     sync_slave_dbs_[DBInfo(db_name)] = std::make_shared<SyncSlaveDB>(db_name);
+    LastTaskBinlogOffst last;
+    last_send_binlog_[db_name] = last;
   }
 }
 
@@ -606,8 +604,8 @@ int PikaReplicaManager::ConsumeWriteQueue() {
       const std::string& ip_port = iter.first;
       std::unordered_map<std::string, std::queue<WriteTask>>& p_map = iter.second;
 //      这里是属于单个Slave的多个DB
-        int db_index = 0;
       for (auto& db_queue : p_map) {
+          auto& db_name = db_queue.first;
 //          这里面在循环同一个slave的不同db的writequeue
         std::queue<WriteTask>& queue = db_queue.second;
         for (int i = 0; i < kBinlogSendPacketNum; ++i) {
@@ -620,16 +618,17 @@ int PikaReplicaManager::ConsumeWriteQueue() {
           size_t batch_size = 0;
           for (size_t i = 0; i < batch_index; ++i) {
             WriteTask& task = queue.front();
-            if(last_send_binlog_[db_index].DistanceTooFar(task.binlog_chip_.offset_.b_offset.filenum, task.binlog_chip_.offset_.b_offset.offset)){
+            if(last_send_binlog_[db_name].DistanceTooFar(task.binlog_chip_.offset_.b_offset.filenum, task.binlog_chip_.offset_.b_offset.offset)){
                 LOG(INFO) << "PONG! distance too far from this to the last one, this one is:"
                           << task.binlog_chip_.offset_.b_offset.filenum << ", "
                           << task.binlog_chip_.offset_.b_offset.offset
-                          << "; the last one is:" << last_send_binlog_[db_index].GetFnum() << ", "
-                          << last_send_binlog_[db_index].GetOffset();
+                          << "; the last one is:" << last_send_binlog_[db_name].GetFnum() << ", "
+                          << last_send_binlog_[db_name].GetOffset();
+                assert(false);
             }else{
                 //distance valid, just renew it
-                last_send_binlog_[db_index].SetFnum(task.binlog_chip_.offset_.b_offset.filenum);
-                last_send_binlog_[db_index].SetOffset(task.binlog_chip_.offset_.b_offset.offset);
+                last_send_binlog_[db_name].SetFnum(task.binlog_chip_.offset_.b_offset.filenum);
+                last_send_binlog_[db_name].SetOffset(task.binlog_chip_.offset_.b_offset.offset);
             }
 
             batch_size += task.binlog_chip_.binlog_.size();
@@ -647,7 +646,6 @@ int PikaReplicaManager::ConsumeWriteQueue() {
             to_send_map[ip_port].push_back(std::move(to_send));
           }
         }
-        db_index++;
       }
     }
   }
