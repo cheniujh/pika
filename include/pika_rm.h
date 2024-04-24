@@ -126,8 +126,54 @@ class SyncSlaveDB : public SyncDB {
   std::string local_ip_;
 };
 
+class LastTaskBinlogOffst {
+public:
+    bool DistanceTooFar(uint32_t fnum, uint64_t offset) {
+        if (GetFnum() == 99999 && GetOffset() == 999999999) {
+            //not inited
+            SetFnum(fnum);
+            SetOffset(offset);
+            return false;
+        }
+        int bytes_3M = 3 << 20;
+        int32_t d_bytes = 0;
+        if (fnum == GetFnum()) {
+            d_bytes = offset - GetOffset();
+        } else {
+            assert(fnum > GetFnum());
+            int byets_100M = 100 << 20;
+            int d_part_1 = byets_100M - GetOffset();
+            int d_part_2 = offset;
+            d_bytes = d_part_1 + d_part_2;
+        }
+        return d_bytes > bytes_3M;
+    }
+    LastTaskBinlogOffst() = default;
+    LastTaskBinlogOffst(uint32_t fnum, uint64_t offset) : fnum_(fnum), offset_(offset) {}
+    uint32_t GetFnum() {
+        std::lock_guard guard(mu_);
+        return fnum_;
+    }
+    void SetFnum(uint32_t fnum) {
+        std::lock_guard guard(mu_);
+        fnum_ = fnum;
+    }
+    uint64_t GetOffset() {
+        std::lock_guard guard(mu_);
+        return offset_;
+    }
+    void SetOffset(uint64_t offset) {
+        std::lock_guard guard(mu_);
+        offset_ = offset;
+    }
+private:
+    std::mutex mu_;
+    uint32_t fnum_{99999};
+    uint64_t offset_{999999999};
+};
 class PikaReplicaManager {
  public:
+  std::vector<LastTaskBinlogOffst> last_send_binlog_;
   PikaReplicaManager();
   ~PikaReplicaManager() = default;
   friend Cmd;

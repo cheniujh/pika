@@ -183,7 +183,7 @@ Status SyncMasterDB::ReadBinlogFileToWq(const std::shared_ptr<SlaveNode>& slave_
         LOG(INFO) << db_info_.db_name_ << " Pushed Binlog To syncWin, start:"
                   << tasks.at(0).binlog_chip_.offset_.b_offset.filenum << ", "
                   << tasks.at(0).binlog_chip_.offset_.b_offset.offset << "; End:"
-                  << tasks.at(tasks.size() - 1).binlog_chip_.offset_.b_offset.filenum
+                  << tasks.at(tasks.size() - 1).binlog_chip_.offset_.b_offset.filenum << ", "
                   << tasks.at(tasks.size() - 1).binlog_chip_.offset_.b_offset.offset;
     } else {
 //        LOG(INFO) << db_info_.db_name_ << "Pushing 0 Binlog to syncWin, maybe no more to read";
@@ -601,11 +601,13 @@ int PikaReplicaManager::ConsumeWriteQueue() {
     for (auto& iter : write_queues_) {
       const std::string& ip_port = iter.first;
       std::unordered_map<std::string, std::queue<WriteTask>>& p_map = iter.second;
+//      这里是属于单个Slave的多个DB
+        int db_index = 0;
       for (auto& db_queue : p_map) {
 //          这里面在循环同一个slave的不同db的writequeue
         std::queue<WriteTask>& queue = db_queue.second;
         for (int i = 0; i < kBinlogSendPacketNum; ++i) {
-//            循环当前queue中的task，试图加入to_send
+//            循环当前queue中的task，试图加入to_send,每个循环都会构造一个to send(一组batch？)
           if (queue.empty()) {
             break;
           }
@@ -614,6 +616,18 @@ int PikaReplicaManager::ConsumeWriteQueue() {
           size_t batch_size = 0;
           for (size_t i = 0; i < batch_index; ++i) {
             WriteTask& task = queue.front();
+            if(last_send_binlog_[db_index].DistanceTooFar(task.binlog_chip_.offset_.b_offset.filenum, task.binlog_chip_.offset_.b_offset.offset)){
+                LOG(INFO) << "PONG! distance too far from this to the last one, this one is:"
+                          << task.binlog_chip_.offset_.b_offset.filenum << ", "
+                          << task.binlog_chip_.offset_.b_offset.offset
+                          << "; the last one is:" << last_send_binlog_[db_index].GetFnum() << ", "
+                          << last_send_binlog_[db_index].GetOffset();
+            }else{
+                //distance valid, just renew it
+                last_send_binlog_[db_index].SetFnum(task.binlog_chip_.offset_.b_offset.filenum);
+                last_send_binlog_[db_index].SetOffset(task.binlog_chip_.offset_.b_offset.offset);
+            }
+
             batch_size += task.binlog_chip_.binlog_.size();
             // make sure SerializeToString will not over 2G
             if (batch_size > PIKA_MAX_CONN_RBUF_HB) {
@@ -629,6 +643,7 @@ int PikaReplicaManager::ConsumeWriteQueue() {
             to_send_map[ip_port].push_back(std::move(to_send));
           }
         }
+        db_index++;
       }
     }
   }
@@ -642,8 +657,9 @@ int PikaReplicaManager::ConsumeWriteQueue() {
       LOG(WARNING) << "Parse ip_port error " << iter.first;
       continue;
     }
+//    这里所谓的跳过了，实际上是前后发送的两个to_send差距太大
     for (auto& to_send : iter.second) {
-//        这里遍历每个slave的每个db,to send一定都是一个db的内容，如果能知道to_send的范围，就ok
+//        这里遍历每个slave的每个db,to send一定都是一个db的内容,这里就是某个to_send突然范围发生了跳转
       Status s = pika_repl_server_->SendSlaveBinlogChips(ip, port, to_send);
       if (!s.ok()) {
         LOG(WARNING) << "send binlog to " << ip << ":" << port << " failed, " << s.ToString();
