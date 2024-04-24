@@ -150,6 +150,10 @@ public:
     }
     LastTaskBinlogOffst() = default;
     LastTaskBinlogOffst(uint32_t fnum, uint64_t offset) : fnum_(fnum), offset_(offset) {}
+    LastTaskBinlogOffst(const LastTaskBinlogOffst& other){
+        SetFnum(other.fnum_);
+        SetOffset(other.offset_);
+    }
     uint32_t GetFnum() {
         std::lock_guard guard(mu_);
         return fnum_;

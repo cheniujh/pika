@@ -530,6 +530,10 @@ pstd::Status SyncSlaveDB::ActivateRsync() {
 /* PikaReplicaManger */
 
 PikaReplicaManager::PikaReplicaManager() {
+    for (int i = 0; i < 8; i++){
+        LastTaskBinlogOffst last;
+        last_send_binlog_.push_back(last);
+    }
   std::set<std::string> ips;
   ips.insert("0.0.0.0");
   int port = g_pika_conf->port() + kPortShiftReplServer;
