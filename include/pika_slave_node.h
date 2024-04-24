@@ -31,7 +31,7 @@ class SyncWindow {
  public:
   SyncWindow()  = default;
   void Push(const SyncWinItem& item);
-  bool Update(const SyncWinItem& start_item, const SyncWinItem& end_item, LogOffset* acked_offset, std::string & dbname);
+  bool Update(const SyncWinItem& start_item, const SyncWinItem& end_item, LogOffset* acked_offset, const std::string & dbname);
   int Remaining();
   std::string ToStringStatus() const {
     if (win_.empty()) {
