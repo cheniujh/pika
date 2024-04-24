@@ -135,7 +135,7 @@ public:
             SetOffset(offset);
             return false;
         }
-        int bytes_3M = 3 << 20;
+        int bytes_512KB = 512 << 10;
         int32_t d_bytes = 0;
         if (fnum == GetFnum()) {
             d_bytes = offset - GetOffset();
@@ -146,7 +146,7 @@ public:
             int d_part_2 = offset;
             d_bytes = d_part_1 + d_part_2;
         }
-        return d_bytes > bytes_3M;
+        return d_bytes > bytes_512KB;
     }
     LastTaskBinlogOffst() = default;
     LastTaskBinlogOffst(uint32_t fnum, uint64_t offset) : fnum_(fnum), offset_(offset) {}
