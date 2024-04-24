@@ -186,7 +186,7 @@ Status SyncMasterDB::ReadBinlogFileToWq(const std::shared_ptr<SlaveNode>& slave_
                   << tasks.at(tasks.size() - 1).binlog_chip_.offset_.b_offset.filenum
                   << tasks.at(tasks.size() - 1).binlog_chip_.offset_.b_offset.offset;
     } else {
-        LOG(INFO) << "Pushing 0 Binlog to syncWin, maybe no more to read";
+//        LOG(INFO) << db_info_.db_name_ << "Pushing 0 Binlog to syncWin, maybe no more to read";
     }
   if (!tasks.empty()) {
     g_pika_rm->ProduceWriteQueue(slave_ptr->Ip(), slave_ptr->Port(), db_info_.db_name_, tasks);
