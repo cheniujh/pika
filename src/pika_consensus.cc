@@ -65,7 +65,8 @@ Status Context::Init() {
 void Context::UpdateAppliedIndex(const LogOffset& offset) {
   std::lock_guard l(rwlock_);
   LogOffset cur_offset;
-  applied_win_.Update(SyncWinItem(offset), SyncWinItem(offset), &cur_offset);
+  std::string nothing = "";
+  applied_win_.Update(SyncWinItem(offset), SyncWinItem(offset), &cur_offset, nothing);
   if (cur_offset > applied_index_) {
     applied_index_ = cur_offset;
     StableSave();

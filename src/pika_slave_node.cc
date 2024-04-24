@@ -17,7 +17,7 @@ void SyncWindow::Push(const SyncWinItem& item) {
   total_size_ += item.binlog_size_;
 }
 
-bool SyncWindow::Update(const SyncWinItem& start_item, const SyncWinItem& end_item, LogOffset* acked_offset, std::string & dbname) {
+bool SyncWindow::Update(const SyncWinItem& start_item, const SyncWinItem& end_item, LogOffset* acked_offset, const std::string & dbname) {
   size_t start_pos = win_.size();
   size_t end_pos = win_.size();
   for (size_t i = 0; i < win_.size(); ++i) {
