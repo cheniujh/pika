@@ -582,6 +582,7 @@ void PikaReplicaManager::InitDB() {
     sync_slave_dbs_[DBInfo(db_name)] = std::make_shared<SyncSlaveDB>(db_name);
     LastTaskBinlogOffst last;
     last_send_binlog_[db_name] = last;
+    last_push_binlog_[db_name] = last;
   }
 }
 
@@ -590,6 +591,18 @@ void PikaReplicaManager::ProduceWriteQueue(const std::string& ip, int port, std:
   std::lock_guard l(write_queue_mu_);
   std::string index = ip + ":" + std::to_string(port);
   for (auto& task : tasks) {
+      if (last_push_binlog_[db_name].DistanceTooFar(task.binlog_chip_.offset_.b_offset.filenum,
+                                                    task.binlog_chip_.offset_.b_offset.offset)) {
+          LOG(INFO) << "PONG In push! distance too far from this to the last one, this one is:"
+                    << task.binlog_chip_.offset_.b_offset.filenum << ", "
+                    << task.binlog_chip_.offset_.b_offset.offset
+                    << "; the last one is:" << last_push_binlog_[db_name].GetFnum() << ", "
+                    << last_push_binlog_[db_name].GetOffset();
+      }else{
+          //distance valid, just renew it
+          last_push_binlog_[db_name].SetFnum(task.binlog_chip_.offset_.b_offset.filenum);
+          last_push_binlog_[db_name].SetOffset(task.binlog_chip_.offset_.b_offset.offset);
+      }
     write_queues_[index][db_name].push(task);
   }
 }
@@ -618,13 +631,14 @@ int PikaReplicaManager::ConsumeWriteQueue() {
           size_t batch_size = 0;
           for (size_t i = 0; i < batch_index; ++i) {
             WriteTask& task = queue.front();
+            task.rm_node_.DBName();
             if(last_send_binlog_[db_name].DistanceTooFar(task.binlog_chip_.offset_.b_offset.filenum, task.binlog_chip_.offset_.b_offset.offset)){
-                LOG(INFO) << "PONG! distance too far from this to the last one, this one is:"
+                LOG(INFO) << "PONG In Comsume! distance too far from this to the last one, this one is:"
                           << task.binlog_chip_.offset_.b_offset.filenum << ", "
                           << task.binlog_chip_.offset_.b_offset.offset
                           << "; the last one is:" << last_send_binlog_[db_name].GetFnum() << ", "
                           << last_send_binlog_[db_name].GetOffset();
-                assert(false);
+//                assert(false);
             }else{
                 //distance valid, just renew it
                 last_send_binlog_[db_name].SetFnum(task.binlog_chip_.offset_.b_offset.filenum);

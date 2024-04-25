@@ -182,6 +182,7 @@ private:
 class PikaReplicaManager {
  public:
   std::map<std::string, LastTaskBinlogOffst> last_send_binlog_;
+  std::map<std::string, LastTaskBinlogOffst> last_push_binlog_;
   PikaReplicaManager();
   ~PikaReplicaManager() = default;
   friend Cmd;
