@@ -598,11 +598,11 @@ void PikaReplicaManager::ProduceWriteQueue(const std::string& ip, int port, std:
                     << task.binlog_chip_.offset_.b_offset.offset
                     << "; the last one is:" << last_push_binlog_[db_name].GetFnum() << ", "
                     << last_push_binlog_[db_name].GetOffset();
-      }else{
-          //distance valid, just renew it
-          last_push_binlog_[db_name].SetFnum(task.binlog_chip_.offset_.b_offset.filenum);
-          last_push_binlog_[db_name].SetOffset(task.binlog_chip_.offset_.b_offset.offset);
       }
+      //distance valid, just renew it
+      last_push_binlog_[db_name].SetFnum(task.binlog_chip_.offset_.b_offset.filenum);
+      last_push_binlog_[db_name].SetOffset(task.binlog_chip_.offset_.b_offset.offset);
+
     write_queues_[index][db_name].push(task);
   }
 }
@@ -638,22 +638,23 @@ int PikaReplicaManager::ConsumeWriteQueue() {
               break;
             }
 
-            if(last_send_binlog_[db_name].DistanceTooFar(task.binlog_chip_.offset_.b_offset.filenum, task.binlog_chip_.offset_.b_offset.offset)){
-                LOG(INFO) << "PONG In Comsume! distance too far from this to the last one, this one is:"
-                          << task.binlog_chip_.offset_.b_offset.filenum << ", "
-                          << task.binlog_chip_.offset_.b_offset.offset
-                          << "; the last one is:" << last_send_binlog_[db_name].GetFnum() << ", "
-                          << last_send_binlog_[db_name].GetOffset();
+              if (last_send_binlog_[db_name].DistanceTooFar(task.binlog_chip_.offset_.b_offset.filenum,
+                                                            task.binlog_chip_.offset_.b_offset.offset)) {
+                  LOG(INFO) << "PONG In Comsume! distance too far from this to the last one, this one is:"
+                            << task.binlog_chip_.offset_.b_offset.filenum << ", "
+                            << task.binlog_chip_.offset_.b_offset.offset
+                            << "; the last one is:" << last_send_binlog_[db_name].GetFnum() << ", "
+                            << last_send_binlog_[db_name].GetOffset();
 //                assert(false);
-            }else{
-                //distance valid, just renew it
-                last_send_binlog_[db_name].SetFnum(task.binlog_chip_.offset_.b_offset.filenum);
-                last_send_binlog_[db_name].SetOffset(task.binlog_chip_.offset_.b_offset.offset);
-            }
+              }
+              //distance valid, just renew it
+              last_send_binlog_[db_name].SetFnum(task.binlog_chip_.offset_.b_offset.filenum);
+              last_send_binlog_[db_name].SetOffset(task.binlog_chip_.offset_.b_offset.offset);
+
 //            每个tosend里面，都是来自同一个db的task
-            to_send.push_back(task);
-            queue.pop();
-            counter++;
+              to_send.push_back(task);
+              queue.pop();
+              counter++;
           }
           if (!to_send.empty()) {
 //              这里直接塞入一个vector，所以其实每个db的binlog还是在同一个vec的，被分隔开了
