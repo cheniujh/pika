@@ -631,7 +631,13 @@ int PikaReplicaManager::ConsumeWriteQueue() {
           size_t batch_size = 0;
           for (size_t i = 0; i < batch_index; ++i) {
             WriteTask& task = queue.front();
-            task.rm_node_.DBName();
+
+            batch_size += task.binlog_chip_.binlog_.size();
+            // make sure SerializeToString will not over 2G
+            if (batch_size > PIKA_MAX_CONN_RBUF_HB) {
+              break;
+            }
+
             if(last_send_binlog_[db_name].DistanceTooFar(task.binlog_chip_.offset_.b_offset.filenum, task.binlog_chip_.offset_.b_offset.offset)){
                 LOG(INFO) << "PONG In Comsume! distance too far from this to the last one, this one is:"
                           << task.binlog_chip_.offset_.b_offset.filenum << ", "
@@ -643,12 +649,6 @@ int PikaReplicaManager::ConsumeWriteQueue() {
                 //distance valid, just renew it
                 last_send_binlog_[db_name].SetFnum(task.binlog_chip_.offset_.b_offset.filenum);
                 last_send_binlog_[db_name].SetOffset(task.binlog_chip_.offset_.b_offset.offset);
-            }
-
-            batch_size += task.binlog_chip_.binlog_.size();
-            // make sure SerializeToString will not over 2G
-            if (batch_size > PIKA_MAX_CONN_RBUF_HB) {
-              break;
             }
 //            每个tosend里面，都是来自同一个db的task
             to_send.push_back(task);
@@ -674,12 +674,14 @@ int PikaReplicaManager::ConsumeWriteQueue() {
       continue;
     }
 //    这里所谓的跳过了，实际上是前后发送的两个to_send差距太大
+    LOG(INFO) << iter.first << " sending " << iter.second.size() << " BinlogChips";
     for (auto& to_send : iter.second) {
 //        这里遍历每个slave的每个db,to send一定都是一个db的内容,这里就是某个to_send突然范围发生了跳转
       Status s = pika_repl_server_->SendSlaveBinlogChips(ip, port, to_send);
       if (!s.ok()) {
         LOG(WARNING) << "send binlog to " << ip << ":" << port << " failed, " << s.ToString();
         to_delete.push_back(iter.first);
+//        一个to_send都发送失败了，为什么还要继续发他后面的， 这里不应当break？
         continue;
       }
     }
@@ -688,6 +690,7 @@ int PikaReplicaManager::ConsumeWriteQueue() {
   if (!to_delete.empty()) {
     std::lock_guard l(write_queue_mu_);
     for (auto& del_queue : to_delete) {
+        LOG(INFO) << "write queue to del: " << del_queue;
       write_queues_.erase(del_queue);
     }
   }
@@ -697,6 +700,7 @@ int PikaReplicaManager::ConsumeWriteQueue() {
 void PikaReplicaManager::DropItemInWriteQueue(const std::string& ip, int port) {
   std::lock_guard l(write_queue_mu_);
   std::string index = ip + ":" + std::to_string(port);
+  LOG(INFO) << "write queue Erase:" << index;
   write_queues_.erase(index);
 }
 
