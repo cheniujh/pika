@@ -65,7 +65,8 @@ Status Context::Init() {
 void Context::UpdateAppliedIndex(const LogOffset& offset) {
   std::lock_guard l(rwlock_);
   LogOffset cur_offset;
-  applied_win_.Update(SyncWinItem(offset), SyncWinItem(offset), &cur_offset);
+  std::string nothing = "";
+  applied_win_.Update(SyncWinItem(offset), SyncWinItem(offset), &cur_offset, nothing);
   if (cur_offset > applied_index_) {
     applied_index_ = cur_offset;
     StableSave();
@@ -148,6 +149,10 @@ Status SyncProgress::Update(const std::string& ip, int port, const LogOffset& st
     }
     // update match_index_
     // shared slave_ptr->slave_mu
+      LOG(INFO) << slave_ptr->DBName() << " Master updated slaveNode win, start:" << start.b_offset.filenum << ", "
+                << start.b_offset.offset << "; End:" << end.b_offset.filenum << ", " << end.b_offset.offset
+                << ". the updated match_index:" << acked_offset.b_offset.filenum << ", "
+                << acked_offset.b_offset.offset;
     match_index_[ip + std::to_string(port)] = acked_offset;
   }
 

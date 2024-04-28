@@ -54,7 +54,17 @@ pstd::Status PikaReplServer::SendSlaveBinlogChips(const std::string& ip, int por
                                                   const std::vector<WriteTask>& tasks) {
   InnerMessage::InnerResponse response;
   BuildBinlogSyncResp(tasks, &response);
-
+  auto size = response.binlog_sync_size();
+    if (size > 0) {
+        auto start_fnum = response.binlog_sync(0).binlog_offset().filenum();
+        auto start_off = response.binlog_sync(0).binlog_offset().offset();
+        auto end_fnum = response.binlog_sync(size - 1).binlog_offset().filenum();
+        auto end_off = response.binlog_sync(size - 1).binlog_offset().offset();
+        LOG(INFO) << response.binlog_sync(0).slot().db_name() << " Master Sending binlogChip: start: " << start_fnum << ", " << start_off << "; End: " << end_fnum
+                  << ", " << end_off;
+    } else {
+        LOG(INFO) << "Master has packed an binlogChips that size is 0, maybe for heart beat";
+    }
   std::string binlog_chip_pb;
   if (!response.SerializeToString(&binlog_chip_pb)) {
     return Status::Corruption("Serialized Failed");

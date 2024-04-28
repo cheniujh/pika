@@ -151,6 +151,7 @@ void PikaReplBgWorker::HandleBGWorkerWriteBinlog(void* arg) {
 
   LogOffset ack_end;
   if (only_keepalive) {
+//      对于心跳包，返回一个空参构造的ackEnd
     ack_end = LogOffset();
   } else {
     LogOffset productor_status;
@@ -158,10 +159,12 @@ void PikaReplBgWorker::HandleBGWorkerWriteBinlog(void* arg) {
     std::shared_ptr<Binlog> logger = db->Logger();
     logger->GetProducerStatus(&productor_status.b_offset.filenum, &productor_status.b_offset.offset,
                               &productor_status.l_offset.term, &productor_status.l_offset.index);
+//    因为前面写binlog是阻塞的，所以到这里，producer binlog offset应该就是刚刚的那批的end
     ack_end = productor_status;
     ack_end.l_offset.term = pb_end.l_offset.term;
   }
-
+//  如果是心跳包，返回去的start和end都是0
+  LOG(INFO) << slave_db->SyncDBInfo().db_name_ << " Slave SendBinlogACK, start:" << ack_start.b_offset.filenum << ", " <<  ack_start.b_offset.offset << "; End:" << ack_end.b_offset.filenum << ", " << ack_end.b_offset.offset;
   g_pika_rm->SendBinlogSyncAckRequest(db_name, ack_start, ack_end);
 }
 
