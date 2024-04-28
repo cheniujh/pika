@@ -324,6 +324,8 @@ Status SyncMasterDB::CheckSyncTimeout(uint64_t now) {
       RmNode rm_node(slave_ptr->Ip(), slave_ptr->Port(), slave_ptr->DBName(), slave_ptr->SessionId());
       WriteTask empty_task(rm_node, BinlogChip(LogOffset(), ""), LogOffset());
       task.push_back(empty_task);
+      //这里就是发送心跳包
+      LOG(INFO) << "Master is sending ping";
       Status s = g_pika_rm->SendSlaveBinlogChipsRequest(slave_ptr->Ip(), slave_ptr->Port(), task);
       slave_ptr->SetLastSendTime(now);
       if (!s.ok()) {
@@ -588,12 +590,15 @@ int PikaReplicaManager::ConsumeWriteQueue() {
   int counter = 0;
   {
     std::lock_guard l(write_queue_mu_);
+//    这里边遍历每个writequeue，取出能取出的，然后发
     for (auto& iter : write_queues_) {
       const std::string& ip_port = iter.first;
       std::unordered_map<std::string, std::queue<WriteTask>>& p_map = iter.second;
       for (auto& db_queue : p_map) {
+//          这里面在循环同一个slave的不同db的writequeue
         std::queue<WriteTask>& queue = db_queue.second;
         for (int i = 0; i < kBinlogSendPacketNum; ++i) {
+//            循环当前queue中的task，试图加入to_send
           if (queue.empty()) {
             break;
           }
@@ -607,11 +612,13 @@ int PikaReplicaManager::ConsumeWriteQueue() {
             if (batch_size > PIKA_MAX_CONN_RBUF_HB) {
               break;
             }
+//            每个tosend里面，都是来自同一个db的task
             to_send.push_back(task);
             queue.pop();
             counter++;
           }
           if (!to_send.empty()) {
+//              这里直接塞入一个vector，所以其实每个db的binlog还是在同一个vec的，被分隔开了
             to_send_map[ip_port].push_back(std::move(to_send));
           }
         }
@@ -621,6 +628,7 @@ int PikaReplicaManager::ConsumeWriteQueue() {
 
   std::vector<std::string> to_delete;
   for (auto& iter : to_send_map) {
+//      这里遍历每个slvae
     std::string ip;
     int port = 0;
     if (!pstd::ParseIpPortString(iter.first, ip, port)) {
@@ -628,6 +636,7 @@ int PikaReplicaManager::ConsumeWriteQueue() {
       continue;
     }
     for (auto& to_send : iter.second) {
+//        这里遍历每个slave的每个db,to send一定都是一个db的内容，如果能知道to_send的范围，就ok
       Status s = pika_repl_server_->SendSlaveBinlogChips(ip, port, to_send);
       if (!s.ok()) {
         LOG(WARNING) << "send binlog to " << ip << ":" << port << " failed, " << s.ToString();
