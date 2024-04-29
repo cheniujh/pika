@@ -50,9 +50,9 @@ class SyncWindow {
     total_size_ = 0;
   }
 
+  std::deque<SyncWinItem> win_;
  private:
   // TODO(whoiami) ring buffer maybe
-  std::deque<SyncWinItem> win_;
   std::size_t total_size_ = 0;
 };
 

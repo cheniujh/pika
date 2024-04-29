@@ -152,7 +152,7 @@ Status SyncProgress::Update(const std::string& ip, int port, const LogOffset& st
       LOG(INFO) << slave_ptr->DBName() << " Master updated slaveNode win, start:" << start.b_offset.filenum << ", "
                 << start.b_offset.offset << "; End:" << end.b_offset.filenum << ", " << end.b_offset.offset
                 << ". the updated match_index:" << acked_offset.b_offset.filenum << ", "
-                << acked_offset.b_offset.offset;
+                << acked_offset.b_offset.offset << ", The End of the Win:" << slave_ptr->sync_win.win_.rbegin()->offset_.b_offset.filenum << ", " << slave_ptr->sync_win.win_.rbegin()->offset_.b_offset.offset;
     match_index_[ip + std::to_string(port)] = acked_offset;
   }
 
