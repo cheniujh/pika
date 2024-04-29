@@ -437,7 +437,7 @@ void SyncSlaveDB::SetLastRecvTime(uint64_t time) {
   m_info_.SetLastRecvTime(time);
 }
 
-Status SyncSlaveDB::CheckSyncTimeout(uint64_t now) {
+Status SyncSlaveDB::CheckSyncTimeout(uint64_t now, PikaReplClient* repl_cli) {
   std::lock_guard l(db_mu_);
   // no need to do session keepalive return ok
   if (repl_state_ != ReplState::kWaitDBSync && repl_state_ != ReplState::kConnected) {
@@ -446,6 +446,15 @@ Status SyncSlaveDB::CheckSyncTimeout(uint64_t now) {
   if (m_info_.LastRecvTime() + kRecvKeepAliveTimeout < now) {
     // update slave state to kTryConnect, and try reconnect to master node
     repl_state_ = ReplState::kTryConnect;
+  }else if(m_info_.LastRecvTime() + kRecv14Seconds < now){
+      //print out the queue size
+      LOG(INFO) << "15s timeout, queue size:";
+      for(int i = 0; i < repl_cli->bg_workers_.size(); i++){
+          int pri_size = -1;
+          int q_size = -1;
+          repl_cli->bg_workers_[i]->GetQueueSize(&pri_size, &q_size);
+          LOG(INFO) << "worker " << i << " , QueueSize：" <<q_size << ", priSize:" << pri_size;
+      }
   }
   return Status::OK();
 }
@@ -779,7 +788,7 @@ Status PikaReplicaManager::CheckSyncTimeout(uint64_t now) {
   }
   for (auto& iter : sync_slave_dbs_) {
     std::shared_ptr<SyncSlaveDB> db = iter.second;
-    Status s = db->CheckSyncTimeout(now);
+    Status s = db->CheckSyncTimeout(now, pika_repl_client_.get());
     if (!s.ok()) {
       LOG(WARNING) << "CheckSyncTimeout Failed " << s.ToString();
     }

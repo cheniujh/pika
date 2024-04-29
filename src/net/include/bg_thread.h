@@ -50,7 +50,6 @@ class BGThread final : public Thread {
   void QueueSize(int* pri_size, int* qu_size);
   void QueueClear();
   void SwallowReadyTasks();
-
  private:
   struct BGItem {
     void (*function)(void*);

@@ -79,6 +79,7 @@ class PikaReplClient {
                                  const std::string& local_ip, bool is_first_send);
   pstd::Status SendRemoveSlaveNode(const std::string& ip, uint32_t port, const std::string& db_name, const std::string& local_ip);
 
+  std::vector<std::unique_ptr<PikaReplBgWorker>> bg_workers_;
  private:
   size_t GetHashIndex(const std::string& key, bool upper_half);
   void UpdateNextAvail() { next_avail_ = (next_avail_ + 1) % static_cast<int32_t>(bg_workers_.size()); }
@@ -86,7 +87,6 @@ class PikaReplClient {
   std::unique_ptr<PikaReplClientThread> client_thread_;
   int next_avail_ = 0;
   std::hash<std::string> str_hash;
-  std::vector<std::unique_ptr<PikaReplBgWorker>> bg_workers_;
 };
 
 #endif

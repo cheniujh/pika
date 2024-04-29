@@ -29,6 +29,7 @@
 // unit seconds
 #define kSendKeepAliveTimeout (2 * 1000000)
 #define kRecvKeepAliveTimeout (20 * 1000000)
+#define kRecv14Seconds (14 * 1000000)
 
 
 class SyncDB {
@@ -102,7 +103,7 @@ class SyncSlaveDB : public SyncDB {
   void SetLastRecvTime(uint64_t time);
   void SetReplState(const ReplState& repl_state);
   ReplState State();
-  pstd::Status CheckSyncTimeout(uint64_t now);
+  pstd::Status CheckSyncTimeout(uint64_t now, PikaReplClient* repl_cli);
 
   // For display
   pstd::Status GetInfo(std::string* info);
@@ -203,6 +204,7 @@ class PikaReplicaManager {
     return sync_slave_dbs_;
   }
 
+  std::unique_ptr<PikaReplClient> pika_repl_client_;
  private:
   void InitDB();
   pstd::Status SelectLocalIp(const std::string& remote_ip, int remote_port, std::string* local_ip);
@@ -215,7 +217,6 @@ class PikaReplicaManager {
 
   // every host owns a queue, the key is "ip + port"
   std::unordered_map<std::string, std::unordered_map<std::string, std::queue<WriteTask>>> write_queues_;
-  std::unique_ptr<PikaReplClient> pika_repl_client_;
   std::unique_ptr<PikaReplServer> pika_repl_server_;
 };
 

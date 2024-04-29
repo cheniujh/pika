@@ -33,7 +33,9 @@ class PikaReplBgWorker {
   net::RedisParser redis_parser_;
   std::string ip_port_;
   std::string db_name_;
-
+  void GetQueueSize(int* pri_size, int* q_size){
+      bg_thread_.QueueSize(pri_size, q_size);
+  };
  private:
   net::BGThread bg_thread_;
   static int HandleWriteBinlog(net::RedisParser* parser, const net::RedisCmdArgsType& argv);
