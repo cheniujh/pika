@@ -16,8 +16,8 @@
 extern PikaServer* g_pika_server;
 extern std::unique_ptr<PikaReplicaManager> g_pika_rm;
 extern std::unique_ptr<PikaCmdTableManager> g_pika_cmd_table_manager;
-
-PikaReplBgWorker::PikaReplBgWorker(int queue_size) : bg_thread_(queue_size) {
+std::vector<int> PikaReplBgWorker::my_drops_(8, 0);
+PikaReplBgWorker::PikaReplBgWorker(int queue_size) : bg_thread_(queue_size){
   bg_thread_.set_thread_name("ReplBgWorker");
   net::RedisParserSettings settings;
   settings.DealMessage = &(PikaReplBgWorker::HandleWriteBinlog);
@@ -48,7 +48,7 @@ void PikaReplBgWorker::HandleBGWorkerWriteBinlog(void* arg) {
   auto index = static_cast<std::vector<int>*>(task_arg->res_private_data);
   PikaReplBgWorker* worker = task_arg->worker;
   worker->ip_port_ = conn->ip_port();
-
+  int my_index_ = task_arg->worker_index_;
   DEFER {
     delete index;
     delete task_arg;
@@ -113,9 +113,19 @@ void PikaReplBgWorker::HandleBGWorkerWriteBinlog(void* arg) {
     const InnerMessage::InnerResponse::BinlogSync& binlog_res = res->binlog_sync(i);
     // if pika are not current a slave or DB not in
     // BinlogSync state, we drop remain write binlog task
+    bool drop = false;
     if (((g_pika_server->role() & PIKA_ROLE_SLAVE) == 0) ||
         ((slave_db->State() != ReplState::kConnected) && (slave_db->State() != ReplState::kWaitDBSync))) {
-      return;
+        drop = true;
+    }
+    if(drop){
+        my_drops_[my_index_]++;
+        auto& last = res->binlog_sync((*index)[(*index).size() - 1]);
+        LOG(INFO) << db_name <<  " in worker " << my_index_ << " is dropping chips from " << binlog_res.binlog_offset().filenum() << ", " << binlog_res.binlog_offset().offset() << " to "
+        << last.binlog_offset().filenum() << ", " << last.binlog_offset().offset() << "; drop count is:" << my_drops_[my_index_];
+        return;
+    }else{
+        my_drops_[my_index_] = 0;
     }
 
     if (slave_db->MasterSessionId() != binlog_res.session_id()) {
@@ -124,6 +134,9 @@ void PikaReplBgWorker::HandleBGWorkerWriteBinlog(void* arg) {
                    << " expected_session: " << binlog_res.session_id()
                    << ", actual_session:" << slave_db->MasterSessionId();
       LOG(WARNING) << "Check Session failed " << binlog_res.slot().db_name();
+        auto& last = res->binlog_sync((*index)[(*index).size() - 1]);
+        LOG(INFO) << db_name << " in worker " << my_index_ << " check fail in chips from " << binlog_res.binlog_offset().filenum() << ", " << binlog_res.binlog_offset().offset() << " to "
+                  << last.binlog_offset().filenum() << ", " << last.binlog_offset().offset() << "; drop count is:" << my_drops_[my_index_];
       slave_db->SetReplState(ReplState::kTryConnect);
       return;
     }

@@ -36,10 +36,11 @@ struct ReplClientWriteBinlogTaskArg {
   std::shared_ptr<net::PbConn> conn;
   void* res_private_data;
   PikaReplBgWorker* worker;
+  int worker_index_;
   ReplClientWriteBinlogTaskArg(const std::shared_ptr<InnerMessage::InnerResponse>& _res,
                                const std::shared_ptr<net::PbConn>& _conn,
-                               void* _res_private_data, PikaReplBgWorker* _worker)
-      : res(_res), conn(_conn), res_private_data(_res_private_data), worker(_worker) {}
+                               void* _res_private_data, PikaReplBgWorker* _worker, int worker_index)
+      : res(_res), conn(_conn), res_private_data(_res_private_data), worker(_worker), worker_index_(worker_index) {}
 };
 
 struct ReplClientWriteDBTaskArg {

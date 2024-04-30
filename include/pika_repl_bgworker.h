@@ -28,7 +28,7 @@ class PikaReplBgWorker {
   void QueueClear();
   static void HandleBGWorkerWriteBinlog(void* arg);
   static void HandleBGWorkerWriteDB(void* arg);
-
+  static std::vector<int> my_drops_;
   BinlogItem binlog_item_;
   net::RedisParser redis_parser_;
   std::string ip_port_;

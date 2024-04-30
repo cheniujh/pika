@@ -71,7 +71,7 @@ void PikaReplClient::ScheduleWriteBinlogTask(const std::string& db_name,
                                              const std::shared_ptr<net::PbConn>& conn, void* res_private_data) {
   size_t index = GetHashIndex(db_name, true);
 //  LOG(INFO) << "Total Workers:" << bg_workers_.size() << ", "<< db_name << " Get Index:" << index;
-  auto task_arg = new ReplClientWriteBinlogTaskArg(res, conn, res_private_data, bg_workers_[index].get());
+  auto task_arg = new ReplClientWriteBinlogTaskArg(res, conn, res_private_data, bg_workers_[index].get(), index);
   bg_workers_[index]->Schedule(&PikaReplBgWorker::HandleBGWorkerWriteBinlog, static_cast<void*>(task_arg));
 }
 
