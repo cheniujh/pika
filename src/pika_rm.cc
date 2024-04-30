@@ -902,6 +902,13 @@ Status PikaReplicaManager::SendTrySyncRequest(const std::string& db_name) {
     LOG(WARNING) << "Slave DB: " << db_name << ", NotFound";
     return Status::Corruption("Slave DB not found");
   }
+  LOG(INFO) << db_name << " Sending Try sync, curr Queue:";
+    for(int i = 0; i < pika_repl_client_->bg_workers_.size(); i++){
+        int pri_size = -1;
+        int q_size = -1;
+        pika_repl_client_->bg_workers_[i]->GetQueueSize(&pri_size, &q_size);
+        LOG(INFO) << "worker " << i << " , QueueSize：" <<q_size << ", priSize:" << pri_size;
+    }
 
   Status status =
       pika_repl_client_->SendTrySync(slave_db->MasterIp(), slave_db->MasterPort(), db_name,
