@@ -75,30 +75,37 @@ int PikaReplClient::Stop() {
 }
 
 void PikaReplClient::Schedule(net::TaskFunc func, void* arg) {
-  write_db_workers_[next_avail_]->Schedule(func, arg);
+  write_binlog_workers_[next_avail_]->Schedule(func, arg);
   UpdateNextAvail();
 }
 
 void PikaReplClient::ScheduleWriteBinlogTask(const std::string& db_name,
                                              const std::shared_ptr<InnerMessage::InnerResponse>& res,
                                              const std::shared_ptr<net::PbConn>& conn, void* res_private_data) {
-  size_t index = GetHashIndex(db_name, true);
-  auto task_arg = new ReplClientWriteBinlogTaskArg(res, conn, res_private_data, bg_workers_[index].get());
-  bg_workers_[index]->Schedule(&PikaReplBgWorker::HandleBGWorkerWriteBinlog, static_cast<void*>(task_arg));
+  char db_num = db_name.back();
+  int index = db_num - '0';
+  if (index < 0 || index > write_binlog_workers_.size()) {
+      LOG(ERROR)
+              << "Corruption in cosuming binlog: the last char of the db_name(extracted from binlog) is not a valid db num, the extracted db_num/worker_index is "
+              << index << " while write_binlog_workers.size() is " << write_binlog_workers_.size();
+      return;
+  }
+  auto task_arg = new ReplClientWriteBinlogTaskArg(res, conn, res_private_data, write_binlog_workers_[index].get());
+  write_binlog_workers_[index]->Schedule(&PikaReplBgWorker::HandleBGWorkerWriteBinlog, static_cast<void*>(task_arg));
 }
 
 void PikaReplClient::ScheduleWriteDBTask(const std::shared_ptr<Cmd>& cmd_ptr, const LogOffset& offset,
                                          const std::string& db_name) {
   const PikaCmdArgsType& argv = cmd_ptr->argv();
   std::string dispatch_key = argv.size() >= 2 ? argv[1] : argv[0];
-  size_t index = GetHashIndex(dispatch_key, false);
+  size_t index = GetHashIndexByKey(dispatch_key);
   auto task_arg = new ReplClientWriteDBTaskArg(cmd_ptr, offset, db_name);
-  bg_workers_[index]->Schedule(&PikaReplBgWorker::HandleBGWorkerWriteDB, static_cast<void*>(task_arg));
+  write_db_workers_[index]->Schedule(&PikaReplBgWorker::HandleBGWorkerWriteDB, static_cast<void*>(task_arg));
 }
 
-size_t PikaReplClient::GetHashIndex(const std::string& key, bool upper_half) {
-  size_t hash_base = bg_workers_.size() / 2;
-  return (str_hash(key) % hash_base) + (upper_half ? 0 : hash_base);
+size_t PikaReplClient::GetHashIndexByKey(const std::string& key) {
+  size_t hash_base = write_db_workers_.size();
+  return (str_hash(key) % hash_base);
 }
 
 Status PikaReplClient::Write(const std::string& ip, const int port, const std::string& msg) {

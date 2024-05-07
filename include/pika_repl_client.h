@@ -80,8 +80,8 @@ class PikaReplClient {
   pstd::Status SendRemoveSlaveNode(const std::string& ip, uint32_t port, const std::string& db_name, const std::string& local_ip);
 
  private:
-  size_t GetHashIndex(const std::string& key, bool upper_half);
-  void UpdateNextAvail() { next_avail_ = (next_avail_ + 1) % static_cast<int32_t>(bg_workers_.size()); }
+  size_t GetHashIndexByKey(const std::string& key);
+  void UpdateNextAvail() { next_avail_ = (next_avail_ + 1) % static_cast<int32_t>(write_binlog_workers_.size()); }
 
   std::unique_ptr<PikaReplClientThread> client_thread_;
   int next_avail_ = 0;
