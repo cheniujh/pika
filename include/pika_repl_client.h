@@ -86,7 +86,8 @@ class PikaReplClient {
   std::unique_ptr<PikaReplClientThread> client_thread_;
   int next_avail_ = 0;
   std::hash<std::string> str_hash;
-  std::vector<std::unique_ptr<PikaReplBgWorker>> bg_workers_;
+  std::vector<std::unique_ptr<PikaReplBgWorker>> write_binlog_workers_;
+  std::vector<std::unique_ptr<PikaReplBgWorker>> write_db_workers_;
 };
 
 #endif

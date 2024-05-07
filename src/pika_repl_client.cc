@@ -27,8 +27,11 @@ extern std::unique_ptr<PikaReplicaManager> g_pika_rm;
 PikaReplClient::PikaReplClient(int cron_interval, int keepalive_timeout)  {
   client_thread_ = std::make_unique<PikaReplClientThread>(cron_interval, keepalive_timeout);
   client_thread_->set_thread_name("PikaReplClient");
-  for (int i = 0; i < 2 * g_pika_conf->sync_thread_num(); ++i) {
-    bg_workers_.push_back(std::make_unique<PikaReplBgWorker>(PIKA_SYNC_BUFFER_SIZE));
+  for(int i = 0; i < g_pika_conf->databases(); i++){
+      write_binlog_workers_.push_back(std::make_unique<PikaReplBgWorker>(PIKA_SYNC_BUFFER_SIZE));
+  }
+  for (int i = 0; i < g_pika_conf->sync_thread_num(); ++i) {
+    write_db_workers_.push_back(std::make_unique<PikaReplBgWorker>(PIKA_SYNC_BUFFER_SIZE));
   }
 }
 
@@ -43,26 +46,36 @@ int PikaReplClient::Start() {
     LOG(FATAL) << "Start ReplClient ClientThread Error: " << res
                << (res == net::kCreateThreadError ? ": create thread error " : ": other error");
   }
-  for (auto & bg_worker : bg_workers_) {
-    res = bg_worker->StartThread();
+  for (auto & binlog_worker : write_binlog_workers_) {
+    res = binlog_worker->StartThread();
     if (res != net::kSuccess) {
-      LOG(FATAL) << "Start Pika Repl Worker Thread Error: " << res
+      LOG(FATAL) << "Start Pika Repl Write Binlog Worker Thread Error: " << res
                  << (res == net::kCreateThreadError ? ": create thread error " : ": other error");
     }
   }
+  for (auto & binlog_worker : write_db_workers_) {
+        res = binlog_worker->StartThread();
+        if (res != net::kSuccess) {
+            LOG(FATAL) << "Start Pika Repl Write DB Worker Thread Error: " << res
+                       << (res == net::kCreateThreadError ? ": create thread error " : ": other error");
+        }
+    }
   return res;
 }
 
 int PikaReplClient::Stop() {
   client_thread_->StopThread();
-  for (auto & bg_worker : bg_workers_) {
-    bg_worker->StopThread();
+  for (auto & binlog_worker : write_binlog_workers_) {
+    binlog_worker->StopThread();
+  }
+  for (auto &db_worker: write_db_workers_) {
+    db_worker->StopThread();
   }
   return 0;
 }
 
 void PikaReplClient::Schedule(net::TaskFunc func, void* arg) {
-  bg_workers_[next_avail_]->Schedule(func, arg);
+  write_db_workers_[next_avail_]->Schedule(func, arg);
   UpdateNextAvail();
 }
 
