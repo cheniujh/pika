@@ -82,6 +82,13 @@ Status Redis::Open(const StorageOptions& storage_options, const std::string& db_
   if (!storage_options.share_block_cache && storage_options.block_cache_size > 0) {
     meta_table_ops.block_cache = rocksdb::NewLRUCache(storage_options.block_cache_size);
   }
+
+  meta_table_ops.pin_l0_filter_and_index_blocks_in_cache = true;
+  meta_table_ops.index_type = rocksdb::BlockBasedTableOptions::kTwoLevelIndexSearch;
+  meta_table_ops.partition_filters = true;
+  meta_table_ops.data_block_index_type = rocksdb::BlockBasedTableOptions::kDataBlockBinaryAndHash;
+  meta_table_ops.optimize_filters_for_memory = true;
+
   meta_cf_ops.table_factory.reset(rocksdb::NewBlockBasedTableFactory(meta_table_ops));
 
   // hash column-family options

@@ -1279,7 +1279,6 @@ void PikaServer::PrintThreadPoolQueueStatus() {
 
 void PikaServer::InitStorageOptions() {
   std::lock_guard rwl(storage_options_rw_);
-
   // For rocksdb::Options
   storage_options_.options.create_if_missing = true;
   storage_options_.options.keep_log_file_num = 10;
@@ -1296,7 +1295,7 @@ void PikaServer::InitStorageOptions() {
   storage_options_.options.level0_stop_writes_trigger = g_pika_conf->level0_stop_writes_trigger();
   storage_options_.options.level0_slowdown_writes_trigger = g_pika_conf->level0_slowdown_writes_trigger();
   storage_options_.options.min_write_buffer_number_to_merge = g_pika_conf->min_write_buffer_number_to_merge();
-  storage_options_.options.max_bytes_for_level_base = g_pika_conf->level0_file_num_compaction_trigger() * g_pika_conf->write_buffer_size();
+  storage_options_.options.max_bytes_for_level_base = 256 << 20;
   storage_options_.options.max_subcompactions = g_pika_conf->max_subcompactions();
   storage_options_.options.target_file_size_base = g_pika_conf->target_file_size_base();
   storage_options_.options.max_background_flushes = g_pika_conf->max_background_flushes();
@@ -1382,6 +1381,21 @@ void PikaServer::InitStorageOptions() {
     storage_options_.table_options.pin_top_level_index_and_filter = true; 
     storage_options_.table_options.optimize_filters_for_memory = true;
   }
+  storage_options_.options.delayed_write_rate = 536870912000;
+  storage_options_.options.max_total_wal_size = 536870912;
+  storage_options_.options.WAL_ttl_seconds = 10800;
+  storage_options_.options.arena_block_size = 1048576;
+  storage_options_.options.dump_malloc_stats = true;
+  storage_options_.options.WAL_size_limit_MB = 16384;
+  storage_options_.options.fail_if_options_file_error = true;
+  storage_options_.options.max_log_file_size = 	268435456;
+  storage_options_.options.WAL_ttl_seconds = 10800;
+  storage_options_.options.keep_log_file_num = 12;
+  storage_options_.options.max_background_jobs = 4;
+  storage_options_.options.max_background_compactions = -1;
+  storage_options_.options.max_background_flushes = -1;
+  storage_options_.options.max_subcompactions = 2;
+
 }
 
 storage::Status PikaServer::RewriteStorageOptions(const storage::OptionType& option_type,
