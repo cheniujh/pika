@@ -1404,6 +1404,7 @@ void PikaServer::InitStorageOptions() {
     rocksdb::kSnappyCompression,
     rocksdb::kSnappyCompression
   };
+  storage_options_.options.stats_dump_period_sec = 0;
 }
 
 storage::Status PikaServer::RewriteStorageOptions(const storage::OptionType& option_type,
