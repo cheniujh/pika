@@ -1395,7 +1395,15 @@ void PikaServer::InitStorageOptions() {
   storage_options_.options.max_background_compactions = -1;
   storage_options_.options.max_background_flushes = -1;
   storage_options_.options.max_subcompactions = 2;
-
+  storage_options_.options.compression_per_level = {
+    rocksdb::kNoCompression,
+    rocksdb::kNoCompression,
+    rocksdb::kSnappyCompression,
+    rocksdb::kSnappyCompression,
+    rocksdb::kSnappyCompression,
+    rocksdb::kSnappyCompression,
+    rocksdb::kSnappyCompression
+  };
 }
 
 storage::Status PikaServer::RewriteStorageOptions(const storage::OptionType& option_type,
