@@ -64,6 +64,8 @@ void GetDescendant(const std::string& dir, std::vector<std::string>& result);
 uint64_t NowMicros();
 void SleepForMicroseconds(int micros);
 
+void GetCurrTimeFormatted(std::string& value_out);
+
 Status NewSequentialFile(const std::string& fname, std::unique_ptr<SequentialFile>& result);
 
 Status NewWritableFile(const std::string& fname, std::unique_ptr<WritableFile>& result);

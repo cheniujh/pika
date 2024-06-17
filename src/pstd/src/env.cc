@@ -224,6 +224,16 @@ uint64_t NowMicros() {
 
 void SleepForMicroseconds(int micros) { std::this_thread::sleep_for(std::chrono::microseconds(micros)); }
 
+void GetCurrTimeFormatted(std::string& value_out) {
+  std::chrono::system_clock::time_point now = std::chrono::system_clock::now();
+  std::time_t now_time_t = std::chrono::system_clock::to_time_t(now);
+  std::tm* now_tm = std::localtime(&now_time_t);
+  char date_time[100];
+  std::strftime(date_time, sizeof(date_time), "%Y-%m-%d %H:%M:%S", now_tm);
+  value_out = date_time;
+}
+
+
 SequentialFile::~SequentialFile() = default;
 
 class PosixSequentialFile : public SequentialFile {
