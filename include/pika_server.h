@@ -207,7 +207,7 @@ class PikaServer : public pstd::noncopyable {
    */
   pstd::Status GetDumpUUID(const std::string& db_name, std::string* snapshot_uuid);
   pstd::Status GetDumpMeta(const std::string& db_name, std::vector<std::string>* files, std::string* snapshot_uuid);
-  void TryDBSync(const std::string& ip, int port, const std::string& db_name, int32_t top);
+  void TryDBSync(const std::string& ip, int port, const std::string& db_name, int32_t top, std::stringstream& output);
 
   /*
    * Keyscan used

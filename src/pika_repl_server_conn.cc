@@ -280,9 +280,11 @@ void PikaReplServerConn::HandleDBSyncRequest(void* arg) {
       }
     }
   }
-
+  std::stringstream output;
+  output << "Handle TryDBSync of " << node.ip() << "," << "offset carried:" << slave_boffset.filenum() << ", "
+         << slave_boffset.offset() << "\n";
   g_pika_server->TryDBSync(node.ip(), node.port() + kPortShiftRSync, db_name,
-                           static_cast<int32_t>(slave_boffset.filenum()));
+                           static_cast<int32_t>(slave_boffset.filenum()), output);
   // Change slave node's state to kSlaveDbSync so that the binlog will perserved.
   // See details in SyncMasterSlot::BinlogCloudPurge.
   master_db->ActivateSlaveDbSync(node.ip(), node.port());

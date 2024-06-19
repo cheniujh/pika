@@ -60,8 +60,10 @@ void DB::BgSaveDB() {
   std::shared_lock l(dbs_rw_);
   std::lock_guard ml(bgsave_protector_);
   if (bgsave_info_.bgsaving) {
+    LOG(INFO) <<  "A bgsave stopped by bgsave_info_.bgsaving";
     return;
   }
+  LOG(INFO) << "A bgsaveing passed the lock, commiting!";
   bgsave_info_.bgsaving = true;
   auto bg_task_arg = new BgTaskArg();
   bg_task_arg->db = shared_from_this();

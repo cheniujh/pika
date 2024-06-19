@@ -789,7 +789,7 @@ pstd::Status PikaServer::GetDumpMeta(const std::string& db_name, std::vector<std
 }
 
 void PikaServer::TryDBSync(const std::string& ip, int port, const std::string& db_name,
-                           int32_t top) {
+                           int32_t top, std::stringstream& output) {
   std::shared_ptr<DB> db = GetDB(db_name);
   if (!db) {
     LOG(WARNING) << "can not find DB : " << db_name
@@ -803,12 +803,30 @@ void PikaServer::TryDBSync(const std::string& ip, int port, const std::string& d
                  << ", TryDBSync Failed";
     return;
   }
+  // 这个地方没有锁？
+  // 从日志来看，并非是并发做，而是线性连续做
+  // 另外，全量失败应该设置error状态，不能只stop rsync
   BgSaveInfo bgsave_info = db->bgsave_info();
   std::string logger_filename = sync_db->Logger()->filename();
+  if (pstd::IsDir(bgsave_info.path) != 0) {
+    output << "Hit:pstd::IsDir(bgsave_info.path)  and  bgsave_info.path is :" << bgsave_info.path << "\n";
+  }
+  std::string path = NewFileName(logger_filename, bgsave_info.offset.b_offset.filenum);
+  if (!pstd::FileExists(path)) {
+    output << "Hit:!pstd::FileExists(NewFileName(logger_filename, bgsave_info.offset.b_offset.filenum)), And path is:"
+           << path << "\n";
+  }
+  if (top - bgsave_info.offset.b_offset.filenum > kDBSyncMaxGap) {
+    output << "Hit:pstd::IsDir(bgsave_info.path), and top is:" << top
+           << ", bgsave_info.offset.b_offset.filenum is:" << bgsave_info.offset.b_offset.filenum << ", kDBSyncMaxGap is"
+           << kDBSyncMaxGap << "\n";
+  }
+  LOG(INFO) << output.str();
   if (pstd::IsDir(bgsave_info.path) != 0 ||
       !pstd::FileExists(NewFileName(logger_filename, bgsave_info.offset.b_offset.filenum)) ||
       top - bgsave_info.offset.b_offset.filenum > kDBSyncMaxGap) {
     // Need Bgsave first
+    LOG(INFO) << ip << " 's dbsync is calling db->BgSaveDB()";
     db->BgSaveDB();
   }
 }
