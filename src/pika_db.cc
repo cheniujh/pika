@@ -410,8 +410,12 @@ bool DB::TryUpdateMasterOffset() {
   std::string info_path = dbsync_path_ + kBgsaveInfoFile;
   if (!pstd::FileExists(info_path)) {
     LOG(WARNING) << "info path: " << info_path << " not exist";
+//  2这里转到tryconnect
     return false;
   }
+
+//  1 rsyncClient内部使用error状态位，如果是异常停止的传输，就删dbsync
+
 
   std::shared_ptr<SyncSlaveDB> slave_db =
       g_pika_rm->GetSyncSlaveDBByName(DBInfo(db_name_));

@@ -116,7 +116,11 @@ class SyncSlaveDB : public SyncDB {
   void SetLocalIp(const std::string& local_ip);
   void StopRsync();
   pstd::Status ActivateRsync();
-  bool IsRsyncRunning() { return rsync_cli_->IsRunning(); }
+  bool IsRsyncRunning() {
+    return rsync_cli_->IsRunning();
+//    这里考虑加一点条件
+  }
+//  、、主要是：一旦state_转为了Stop，可能会直接进入TryUpdateOffset，要确保dbsync目录是在这之前删除的，而且dbsync目录也应该在rsync工作线程全部退出以后才能删除
   bool IsRsyncErrorStopped() { return rsync_cli_->IsErrorStopped(); }
 
  private:

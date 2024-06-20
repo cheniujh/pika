@@ -100,8 +100,8 @@ void* RsyncClient::ThreadMain() {
   std::ofstream outfile;
   outfile.open(meta_file_path, std::ios_base::app);
   if (!outfile.is_open()) {
-    LOG(FATAL) << "unable to open meta file " << meta_file_path << ", error:"  << strerror(errno);
-    return nullptr;
+    LOG(ERROR) << "unable to open meta file " << meta_file_path << ", error:"  << strerror(errno);
+    error_stopped_.store(true);
   }
   DEFER {
     outfile.close();
@@ -470,6 +470,7 @@ Status RsyncClient::CleanUpExpiredFiles(bool need_reset_path, const std::set<std
 Status RsyncClient::UpdateLocalMeta(const std::string& snapshot_uuid, const std::set<std::string>& expired_files,
                                     std::map<std::string, std::string>* localFileMap) {
   if (localFileMap->empty()) {
+//    如果是第一次全量同步，这里会直接返回，所以dumpfile直接就没有uuid
     return Status::OK();
   }
   

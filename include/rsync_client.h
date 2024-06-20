@@ -87,6 +87,7 @@ private:
   std::map<std::string, std::string> meta_table_;
   std::set<std::string> file_set_;
   std::string snapshot_uuid_;
+  //这个就是./dbsync/dbX, 如果要删除，直接删除这个就行
   std::string dir_;
   std::string db_name_;
 
