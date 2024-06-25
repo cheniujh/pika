@@ -824,6 +824,8 @@ class PikaConf : public pstd::BaseConf {
   int Load();
   int ConfigRewrite();
   int ConfigRewriteReplicationID();
+  void MoveReplicationIDToPending();
+  void RemovePendingStateOfReplicationID();
 
  private:
   // TODO: replace mutex with atomic value
@@ -985,6 +987,14 @@ class PikaConf : public pstd::BaseConf {
   int throttle_bytes_per_second_ = 200 << 20; // 200MB/s
   int max_rsync_parallel_num_ = kMaxRsyncParallelNum;
   std::atomic_int64_t rsync_timeout_ms_ = 1000;
+
+  //The following is not regular conf item
+  /*
+   * if slave wanna connect to master by full sync, the replicaitonID can be assigned to slave only after full sync is done
+   * pending_replication_id_ is used to temp save the replciation_id during full sync
+   */
+  std::string pending_replication_id_;
+
 };
 
 #endif

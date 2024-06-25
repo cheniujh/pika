@@ -866,3 +866,35 @@ std::vector<rocksdb::CompressionType> PikaConf::compression_per_level() {
   }
   return types;
 }
+void PikaConf::MoveReplicationIDToPending() {
+  {
+    std::lock_guard l(rwlock_);
+    //in multidb scenarios, maybe some db already move the replication_id to pending
+    if (!replication_id_.empty()) {
+      pending_replication_id_ = replication_id_;
+      replication_id_.clear();
+      TryPushDiffCommands("replication-id", replication_id_);
+    } else if (replication_id_.empty() && pending_replication_id_.empty()) {
+      LOG(ERROR) << "Found both replicaiton_id and pending_replication_id are empty when move replication_id to "
+                    "pending state, which is not normal";
+      return;
+    }
+  }
+  ConfigRewrite();
+}
+
+void PikaConf::RemovePendingStateOfReplicationID() {
+  {
+    std::lock_guard l(rwlock_);
+    if (replication_id_.empty() && !pending_replication_id_.empty()) {
+      replication_id_ = pending_replication_id_;
+      pending_replication_id_.clear();
+      TryPushDiffCommands("replication-id", replication_id_);
+    } else if (replication_id_.empty() && pending_replication_id_.empty()) {
+      LOG(ERROR) << "Found both replicaiton_id and pending_replication_id are empty when removing the pending state if "
+                    "replication_id, which is not normal";
+      return;
+    }
+  }
+  ConfigRewrite();
+}
