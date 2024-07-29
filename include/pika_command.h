@@ -247,7 +247,6 @@ const std::string kCmdNameXInfo = "xinfo";
 
 const std::string kClusterPrefix = "pkcluster";
 
-const std::unordered_set<std::string> interceptCmds = {kCmdNameGet, kCmdNameHGet, kCmdNameHGetall};
 
 /*
  * If a type holds a key, a new data structure
@@ -583,7 +582,7 @@ class Cmd : public std::enable_shared_from_this<Cmd> {
   void ProcessCommand(const HintKeys& hint_key = HintKeys());
   void InternalProcessCommand(const HintKeys& hint_key);
   void DoCommand(const HintKeys& hint_key);
-  bool DoReadCommandInCache(const HintKeys& hint_key = HintKeys());
+  bool DoReadCommandInCache();
   void LogCommand() const;
 
   std::string name_;

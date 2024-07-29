@@ -911,8 +911,7 @@ void Cmd::DoCommand(const HintKeys& hint_keys) {
   }
 }
 
-// just read in cache
-bool Cmd::DoReadCommandInCache(const HintKeys& hint_keys) {
+bool Cmd::DoReadCommandInCache() {
   if (!IsSuspend()) {
     db_->DBLockShared();
   }
@@ -921,9 +920,8 @@ bool Cmd::DoReadCommandInCache(const HintKeys& hint_keys) {
       db_->DBUnlockShared();
     }
   };
-  if (IsNeedCacheDo()
-      && PIKA_CACHE_NONE != g_pika_conf->cache_mode()
-      && db_->cache()->CacheStatus() == PIKA_CACHE_STATUS_OK) {
+
+  if (db_->cache()->CacheStatus() == PIKA_CACHE_STATUS_OK) {
       if (IsNeedReadCache()) {
         ReadCache();
       }
