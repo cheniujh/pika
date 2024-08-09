@@ -189,7 +189,7 @@ void DispatchThread::CleanWaitNodeOfUnBlockedBlrConn(std::shared_ptr<net::RedisC
   // removed all the waiting info of this conn/ doing cleaning work
   auto pair = blocked_conn_to_keys_.find(conn_unblocked->fd());
   if (pair == blocked_conn_to_keys_.end()) {
-    LOG(WARNING) << "blocking info of blpop/brpop went wrong, blpop/brpop can't working correctly";
+    LOG(ERROR) << "blocking info of blpop/brpop went wrong, blpop/brpop can't working correctly";
     return;
   }
   auto& blpop_keys_list = pair->second;
