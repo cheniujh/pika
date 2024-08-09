@@ -4,6 +4,7 @@
 // of patent rights can be found in the PATENTS file in the same directory.
 
 #include "include/pika_list.h"
+#include <memory>
 #include <utility>
 #include "include/pika_cache.h"
 #include "include/pika_data_distribution.h"
@@ -179,10 +180,13 @@ void BlockingBaseCmd::ServeAndUnblockConns(void* args) {
   auto bg_args = std::unique_ptr<UnblockTaskArgs>(static_cast<UnblockTaskArgs*>(args));
   net::DispatchThread* dispatchThread = bg_args->dispatchThread;
   std::shared_ptr<DB> db = bg_args->db;
+  std::shared_ptr<SyncMasterDB> sync_db = g_pika_rm->GetSyncMasterDBByName(DBInfo(db->GetDBName()));
   std::string key = std::move(bg_args->key);
   auto& key_to_conns_ = dispatchThread->GetMapFromKeyToConns();
   net::BlockKey blrPop_key{db->GetDBName(), key};
 
+  //[NOTICE]: within the next scope formed by 3 locks, other locks should never be acquired !
+  //WARNING: g_pika_server->GetDB(), g_pika_rm->GetSynMasterDB SHOULD NOT BE CALLED within the scope, or deadlock will happen !
   pstd::lock::ScopeRecordLock record_lock(db->LockMgr(), key);//It's a RAII Lock
   db->DBLockShared();
   std::unique_lock map_lock(dispatchThread->GetBlockMtx());// do not change the sequence of these 3 locks, or deadlock will happen
@@ -224,11 +228,13 @@ void BlockingBaseCmd::ServeAndUnblockConns(void* args) {
   }
   dispatchThread->CleanKeysAfterWaitNodeCleaned();
   map_lock.unlock();
-  WriteBinlogOfPopAndUpdateCache(pop_binlog_args);
+  WriteBinlogOfPopAndUpdateCache(pop_binlog_args, db, sync_db);
   db->DBUnlockShared();
 }
 
-void BlockingBaseCmd::WriteBinlogOfPopAndUpdateCache(std::vector<WriteBinlogOfPopArgs>& pop_args) {
+void BlockingBaseCmd::WriteBinlogOfPopAndUpdateCache(std::vector<WriteBinlogOfPopArgs>& pop_args,
+                                                     std::shared_ptr<DB> db,
+                                                     std::shared_ptr<SyncMasterDB> sync_db) {
   // write binlog of l/rpop
   for (auto& pop_arg : pop_args) {
     std::shared_ptr<Cmd> pop_cmd;
@@ -240,11 +246,10 @@ void BlockingBaseCmd::WriteBinlogOfPopAndUpdateCache(std::vector<WriteBinlogOfPo
       pop_type = kCmdNameRPop;
       pop_cmd = std::make_shared<RPopCmd>(kCmdNameRPop, 2, kCmdFlagsWrite |  kCmdFlagsList);
     }
-
     PikaCmdArgsType args;
     args.push_back(std::move(pop_type));
     args.push_back(pop_arg.key);
-    pop_cmd->Initial(args, pop_arg.db->GetDBName());
+    pop_cmd->Initial(args, pop_arg.db->GetDBName(), std::move(db), std::move(sync_db));
     pop_cmd->SetConn(pop_arg.conn);
     auto resp_ptr = std::make_shared<std::string>("this resp won't be used for current code(consensus-level always be 0)");
     pop_cmd->SetResp(resp_ptr);
@@ -398,7 +403,7 @@ void BLPopCmd::DoBinlog() {
   }
   std::vector<WriteBinlogOfPopArgs> args;
   args.push_back(std::move(binlog_args_));
-  WriteBinlogOfPopAndUpdateCache(args);
+  WriteBinlogOfPopAndUpdateCache(args, db_, sync_db_);
 }
 
 void LPopCmd::DoInitial() {
@@ -732,7 +737,7 @@ void BRPopCmd::DoBinlog() {
   }
   std::vector<WriteBinlogOfPopArgs> args;
   args.push_back(std::move(binlog_args_));
-  WriteBinlogOfPopAndUpdateCache(args);
+  WriteBinlogOfPopAndUpdateCache(args, db_, sync_db_);
 }
 
 

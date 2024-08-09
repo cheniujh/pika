@@ -533,6 +533,11 @@ class Cmd : public std::enable_shared_from_this<Cmd> {
   int8_t SubCmdIndex(const std::string& cmdName);  // if the command no subCommand，return -1；
 
   void Initial(const PikaCmdArgsType& argv, const std::string& db_name);
+  //sometimes, some cmd need to be initialed in non-exectute path and being in the scope of some other locks.
+  //but g_pika_server->GetDB() and g_pika_server->GetSyncMasterDB() all need use big lock (log big mutex)
+  //to avoid the risk of deadlock, in this scenario, we can GetDB and GetSyncMasterDB before enter into lock scope
+  //and just pass them as args(thus, no big lock happened within Initial)
+  void Initial(const PikaCmdArgsType& argv, const std::string& db_name, std::shared_ptr<DB> db, std::shared_ptr<SyncMasterDB> sync_db);
   uint32_t flag() const;
   bool hasFlag(uint32_t flag) const;
   bool is_read() const;

@@ -841,6 +841,17 @@ void Cmd::Initial(const PikaCmdArgsType& argv, const std::string& db_name) {
   DoInitial();
 };
 
+void Cmd::Initial(const PikaCmdArgsType& argv, const std::string& db_name, std::shared_ptr<DB> db,
+                  std::shared_ptr<SyncMasterDB> sync_db) {
+  argv_ = argv;
+  db_name_ = db_name;
+  res_.clear();  // Clear res content
+  db_ = std::move(db);
+  sync_db_ = std::move(sync_db);
+  Clear();       // Clear cmd, Derived class can has own implement
+  DoInitial();
+}
+
 std::vector<std::string> Cmd::current_key() const { return {""}; }
 
 void Cmd::Execute() {
