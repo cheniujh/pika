@@ -12,7 +12,7 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-var _ = Describe("List Commands Codis", func() {
+var _ = PDescribe("List Commands Codis", func() {
 	ctx := context.TODO()
 	var client *redis.Client
 
@@ -24,7 +24,7 @@ var _ = Describe("List Commands Codis", func() {
 		//Expect(client.Close()).NotTo(HaveOccurred())
 	})
 
-	Describe("lists", func() {
+	PDescribe("lists", func() {
 		It("should LIndex", func() {
 			key := uuid.New().String()
 			lPush := client.LPush(ctx, key, "World")
@@ -405,7 +405,7 @@ var _ = Describe("List Commands Codis", func() {
 
 	})
 })
-var _ = Describe("Hash Commands Codis", func() {
+var _ = PDescribe("Hash Commands Codis", func() {
 	ctx := context.TODO()
 	var client *redis.Client
 
@@ -418,7 +418,7 @@ var _ = Describe("Hash Commands Codis", func() {
 		Expect(client.Close()).NotTo(HaveOccurred())
 	})
 
-	Describe("hashes", func() {
+	PDescribe("hashes", func() {
 		It("should HDel", func() {
 			hashKey := uuid.New().String()
 
@@ -745,7 +745,7 @@ var _ = Describe("Hash Commands Codis", func() {
 
 	})
 })
-var _ = Describe("String Commands Codis", func() {
+var _ = PDescribe("String Commands Codis", func() {
 	ctx := context.TODO()
 	var client *redis.Client
 
@@ -758,7 +758,7 @@ var _ = Describe("String Commands Codis", func() {
 		Expect(client.Close()).NotTo(HaveOccurred())
 	})
 
-	Describe("strings", func() {
+	PDescribe("strings", func() {
 		It("should Append", func() {
 			key := uuid.New().String()
 
@@ -1436,7 +1436,7 @@ var _ = Describe("String Commands Codis", func() {
 
 	})
 })
-var _ = Describe("Zset Commands Codis", func() {
+var _ = PDescribe("Zset Commands Codis", func() {
 	ctx := context.TODO()
 	var client *redis.Client
 
@@ -2339,7 +2339,7 @@ var _ = Describe("Zset Commands Codis", func() {
 		//}}))
 	})
 })
-var _ = Describe("Set Commands Codis", func() {
+var _ = PDescribe("Set Commands Codis", func() {
 	ctx := context.TODO()
 	var client *redis.Client
 
@@ -2352,7 +2352,7 @@ var _ = Describe("Set Commands Codis", func() {
 		Expect(client.Close()).NotTo(HaveOccurred())
 	})
 
-	Describe("sets", func() {
+	PDescribe("sets", func() {
 		It("should SAdd", func() {
 			key := uuid.New().String()
 
