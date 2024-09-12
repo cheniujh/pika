@@ -36,12 +36,12 @@ class SetCmd : public Cmd {
   std::string value_;
   std::string target_;
   int32_t success_ = 0;
-  int64_t ttl_millsec = 0;
+  int64_t sec_ = 0;
   bool has_ttl_ = false;
   SetCmd::SetCondition condition_{kNONE};
   void DoInitial() override;
   void Clear() override {
-    ttl_millsec = 0;
+    sec_ = 0;
     success_ = 0;
     condition_ = kNONE;
   }
@@ -69,7 +69,7 @@ class GetCmd : public Cmd {
  private:
   std::string key_;
   std::string value_;
-  int64_t ttl_millsec_ = 0;
+  int64_t sec_ = 0;
   void DoInitial() override;
   rocksdb::Status s_;
 };
@@ -115,8 +115,6 @@ class IncrCmd : public Cmd {
   int64_t new_value_ = 0;
   void DoInitial() override;
   rocksdb::Status s_;
-  int64_t expired_timestamp_millsec_ = 0;
-  std::string ToRedisProtocol() override;
 };
 
 class IncrbyCmd : public Cmd {
@@ -140,8 +138,6 @@ class IncrbyCmd : public Cmd {
   int64_t by_ = 0, new_value_ = 0;
   void DoInitial() override;
   rocksdb::Status s_;
-  int64_t expired_timestamp_millsec_ = 0;
-  std::string ToRedisProtocol() override;
 };
 
 class IncrbyfloatCmd : public Cmd {
@@ -165,8 +161,6 @@ class IncrbyfloatCmd : public Cmd {
   double by_ = 0;
   void DoInitial() override;
   rocksdb::Status s_;
-  int64_t expired_timestamp_millsec_ = 0;
-  std::string ToRedisProtocol() override;
 };
 
 class DecrCmd : public Cmd {
@@ -184,10 +178,12 @@ class DecrCmd : public Cmd {
   void Split(const HintKeys& hint_keys) override{};
   void Merge() override{};
   Cmd* Clone() override { return new DecrCmd(*this); }
+  std::string ToRedisProtocol() override;
 
  private:
   std::string key_;
   int64_t new_value_ = 0;
+  uint64_t ts_ms_ = 0;
   void DoInitial() override;
   rocksdb::Status s_;
 };
@@ -207,10 +203,12 @@ class DecrbyCmd : public Cmd {
   void Split(const HintKeys& hint_keys) override{};
   void Merge() override{};
   Cmd* Clone() override { return new DecrbyCmd(*this); }
+  std::string ToRedisProtocol() override;
 
  private:
   std::string key_;
   int64_t by_ = 0, new_value_ = 0;
+  uint64_t ts_ms_ = 0;
   void DoInitial() override;
   rocksdb::Status s_;
 };
@@ -258,9 +256,9 @@ class AppendCmd : public Cmd {
   std::string key_;
   std::string value_;
   std::string new_value_;
-  void DoInitial() override;
   rocksdb::Status s_;
   int64_t expired_timestamp_millsec_ = 0;
+  void DoInitial() override;
   std::string ToRedisProtocol() override;
 };
 
@@ -351,7 +349,7 @@ class SetexCmd : public Cmd {
 
  private:
   std::string key_;
-  int64_t ttl_sec_ = 0;
+  int64_t sec_ = 0;
   std::string value_;
   void DoInitial() override;
   rocksdb::Status s_;
@@ -376,7 +374,7 @@ class PsetexCmd : public Cmd {
 
  private:
   std::string key_;
-  int64_t ttl_millsec = 0;
+  int64_t usec_ = 0;
   std::string value_;
   void DoInitial() override;
   rocksdb::Status s_;
@@ -540,7 +538,7 @@ class StrlenCmd : public Cmd {
  private:
   std::string key_;
   std::string value_;
-  int64_t ttl_millsec = 0;
+  int64_t sec_ = 0;
   void DoInitial() override;
   rocksdb::Status s_;
 };
@@ -581,7 +579,7 @@ class ExpireCmd : public Cmd {
 
  private:
   std::string key_;
-  int64_t ttl_sec_ = 0;
+  int64_t sec_ = 0;
   void DoInitial() override;
   std::string ToRedisProtocol() override;
   rocksdb::Status s_;
@@ -605,7 +603,7 @@ class PexpireCmd : public Cmd {
 
  private:
   std::string key_;
-  int64_t ttl_millsec = 0;
+  int64_t msec_ = 0;
   void DoInitial() override;
   std::string ToRedisProtocol() override;
   rocksdb::Status s_;
@@ -629,7 +627,7 @@ class ExpireatCmd : public Cmd {
 
  private:
   std::string key_;
-  int64_t time_stamp_sec_ = 0;
+  int64_t time_stamp_ = 0;
   void DoInitial() override;
   rocksdb::Status s_;
 };
@@ -652,9 +650,10 @@ class PexpireatCmd : public Cmd {
 
  private:
   std::string key_;
-  int64_t time_stamp_millsec_ = 0;
+  int64_t time_stamp_ms_ = 0;
   void DoInitial() override;
   rocksdb::Status s_;
+  std::string ToRedisProtocol() override;
 };
 
 class TtlCmd : public Cmd {
@@ -809,9 +808,9 @@ class PKSetexAtCmd : public Cmd {
  private:
   std::string key_;
   std::string value_;
-  int64_t time_stamp_sec_ = 0;
+  int64_t time_stamp_ = 0;
   void DoInitial() override;
-  void Clear() override { time_stamp_sec_ = 0; }
+  void Clear() override { time_stamp_ = 0; }
   rocksdb::Status s_;
 };
 
