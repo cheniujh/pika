@@ -499,7 +499,7 @@ Status Storage::PKHRScanRange(const Slice& key, const Slice& field_start, const 
 // Sets Commands
 Status Storage::SAdd(const Slice& key, const std::vector<std::string>& members, int32_t* ret, uint64_t* ts_ms) {
   auto& inst = GetDBInstance(key);
-  uint64_t tmp_ts;
+  uint64_t tmp_ts = 0;
   if (!ts_ms) {
     ts_ms = &tmp_ts;
   }
@@ -906,7 +906,7 @@ Status Storage::ZIncrby(const Slice& key, const Slice& member, double increment,
                         bool* key_found) {
   auto& inst = GetDBInstance(key);
 
-  uint64_t tmp_ts;
+  uint64_t tmp_ts = 0;
   if (!ts_ms) {
     ts_ms = &tmp_ts;
   }
