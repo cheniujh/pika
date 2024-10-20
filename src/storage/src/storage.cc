@@ -1144,8 +1144,7 @@ Status Storage::ZLexcount(const Slice& key, const Slice& min, const Slice& max, 
 Status Storage::ZRemrangebylex(const Slice& key, const Slice& min, const Slice& max, bool left_close, bool right_close,
                                int32_t* ret, std::vector<std::string>* members_del) {
   auto& inst = GetDBInstance(key);
-  std::vector<std::string> tmp_m_del;
-  return inst->ZRemrangebylex(key, min, max, left_close, right_close, ret, nullptr);
+  return inst->ZRemrangebylex(key, min, max, left_close, right_close, ret, members_del);
 }
 
 Status Storage::ZScan(const Slice& key, int64_t cursor, const std::string& pattern, int64_t count,
