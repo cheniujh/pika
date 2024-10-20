@@ -731,7 +731,6 @@ void AddSlotKey(const std::string& type, const std::string& key, const std::shar
   // prevent write slot_key success, but write tag_key failed, so always write tag_key
   if (hastag) {
     std::string tag_key = GetSlotsTagKey(crc);
-    uint64_t ts_ms;
     s = db->storage()->SAdd(tag_key, members, &res, nullptr);
     if (!s.ok()) {
       LOG(ERROR) << "sadd key[" << key << "] to tagKey[" << tag_key << "] failed, error: " << s.ToString();
