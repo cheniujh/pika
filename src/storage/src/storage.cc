@@ -2010,7 +2010,7 @@ Status Storage::PKZSetAt(const Slice& key, const Slice& member, double old_score
 }
 Status Storage::HyperloglogSet(const Slice& key, std::string& value) {
   auto& inst = GetDBInstance(key);
-  return inst->HyperloglogGet(key, &value);
+  return inst->HyperloglogSet(key, value);
 }
 
 }  //  namespace storage
