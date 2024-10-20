@@ -2070,6 +2070,7 @@ Status Redis::PKZSetAt(const Slice& key, const Slice& member, double old_score, 
 //    *ret = score;
     s = db_->Write(default_write_options_, &batch);
     UpdateSpecificKeyStatistics(DataType::kZSets, key.ToString(), statistic);
+    static_cast<void*>(&statistic);
     return s;
   } else if (s.IsNotFound()) {
     return Status::NotFound();
