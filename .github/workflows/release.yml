@@ -77,13 +77,13 @@ jobs:
         run: ./ci/release-build.sh checksum ${{ github.event.repository.name }} ${{ env.name }}
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v1
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ env.name }}
           path: build/${{ env.name }}
 
       - name: Upload checksum of artifacts
-        uses: actions/upload-artifact@v1
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ env.name }}.sha256sum
           path: build/${{ env.name }}.sha256sum
