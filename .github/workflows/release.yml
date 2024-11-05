@@ -90,7 +90,7 @@ jobs:
 
   release:
     name: Release artifacts
-    needs: [ build, rocky ]
+    needs: [ build, centos ]
     runs-on: ubuntu-latest
     steps:
       - name: Download artifacts
