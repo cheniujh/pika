@@ -71,8 +71,8 @@ jobs:
       - name: Mock Release build os - centos
         run: |
           mkdir -p build
-          # 生成一个100MB的文件，代替实际编译
-          dd if=/dev/zero of=build/${{ env.name }} bs=1M count=100
+          # 生成一个100MB的文件，使用随机内容填充
+          base64 /dev/urandom | head -c 100000000 > build/${{ env.name }}
 
 #      - name: Calculate checksum and rename binary
 #        shell: bash
