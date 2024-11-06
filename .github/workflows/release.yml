@@ -86,7 +86,7 @@ jobs:
       - name: Upload artifacts using Python script
         run: |
           python3 ci/upload_artifact.py build/${{ env.name }} "${{ env.name }}"
-          python3 ci/upload_artifact.py build/${{ env.name }}.sha256sum "${{ env.name }}.sha256sum"
+#          python3 ci/upload_artifact.py build/${{ env.name }}.sha256sum "${{ env.name }}.sha256sum"
 
   release:
     name: Release artifacts
