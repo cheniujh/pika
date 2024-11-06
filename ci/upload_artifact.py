@@ -31,32 +31,18 @@ def upload_artifact(file_path, artifact_name, token, run_id):
     }
 
     # 初始化上传请求，获取用于上传的URL
+    files = {
+        "file": (artifact_name, open(compressed_file_path, "rb"), "application/octet-stream")
+    }
     data = {
         "name": artifact_name,
-        "size": file_size  # 指定压缩后文件的大小
+        "size": str(file_size)  # 指定压缩后文件的大小
     }
-    response = requests.post(upload_url, headers=headers, json=data)
+
+    response = requests.post(upload_url, headers=headers, data=data, files=files)
     if response.status_code != 201:
         print(f"Error initializing upload: {response.json()}")
         return
-
-    # 从初始化响应中获取实际的上传URL
-    upload_response = response.json()
-    blob_upload_url = upload_response['url']
-
-    # 一次性上传整个压缩文件
-    with open(compressed_file_path, 'rb') as f:
-        compressed_data = f.read()
-        upload_headers = {
-            **headers,
-            "Content-Length": str(file_size),
-            "Content-Type": "application/octet-stream",
-        }
-        upload_response = requests.put(blob_upload_url, headers=upload_headers, data=compressed_data)
-
-        if upload_response.status_code != 200:
-            print(f"Error uploading artifact: {upload_response.json()}")
-            return
 
     print(f"Uploaded {artifact_name} successfully with compressed size {file_size} bytes")
 
