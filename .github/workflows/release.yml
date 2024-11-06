@@ -74,9 +74,9 @@ jobs:
           # 生成一个100MB的文件，代替实际编译
           dd if=/dev/zero of=build/${{ env.name }} bs=1M count=100
 
-      - name: Calculate checksum and rename binary
-        shell: bash
-        run: ./ci/release-build.sh checksum ${{ github.event.repository.name }} ${{ env.name }}
+#      - name: Calculate checksum and rename binary
+#        shell: bash
+#        run: ./ci/release-build.sh checksum ${{ github.event.repository.name }} ${{ env.name }}
 
       - name: Install Python dependencies for uploading artifacts
         run: |
