@@ -16,7 +16,7 @@ function install_deps() {
     sudo dnf install -y tcl which tar g++ tar epel-release gcc-c++ libstdc++-devel
     sudo dnf install -y gcc-toolset-13
   elif [[ $OS == *"centos"* ]]; then
-    sudo source /opt/rh/devtoolset-10/enable
+    source /opt/rh/devtoolset-10/enable
   else
     echo "not support $OS"
   fi
@@ -34,8 +34,8 @@ function configure_cmake() {
     source /opt/rh/gcc-toolset-13/enable
     cmake -B build -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DUSE_PIKA_TOOLS=ON -DCMAKE_CXX_FLAGS_DEBUG=-fsanitize=address
   elif [[ $OS == *"centos"* ]]; then
-    sudo source /opt/rh/devtoolset-10/enable
-    sudo cmake -B build -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DUSE_PIKA_TOOLS=ON -DCMAKE_CXX_FLAGS_DEBUG=-fsanitize=address
+    source /opt/rh/devtoolset-10/enable
+    cmake -B build -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DUSE_PIKA_TOOLS=ON -DCMAKE_CXX_FLAGS_DEBUG=-fsanitize=address
   fi
   echo "configure cmake after ..."
 }
