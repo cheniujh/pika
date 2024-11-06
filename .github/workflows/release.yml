@@ -63,11 +63,17 @@ jobs:
         run: |
           yum install -y python3
 
-      - name: Release build os - centos
-        run: |
-          chmod +x ci/release-build.sh
-          ./ci/release-build.sh install centos ${{ env.BUILD_TYPE }} -xe
+#      - name: Release build os - centos
+#        run: |
+#          chmod +x ci/release-build.sh
+#          ./ci/release-build.sh install centos ${{ env.BUILD_TYPE }} -xe
 
+      - name: Mock Release build os - centos
+        run: |
+          mkdir -p build
+          # 生成一个100MB的文件，代替实际编译
+          dd if=/dev/zero of=build/${{ env.name }} bs=1M count=100
+          
       - name: Calculate checksum and rename binary
         shell: bash
         run: ./ci/release-build.sh checksum ${{ github.event.repository.name }} ${{ env.name }}
