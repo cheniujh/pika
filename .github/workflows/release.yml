@@ -58,6 +58,12 @@ jobs:
         uses: actions/checkout@v1
         with:
           fetch-depth: 0
+
+      - name: Install Python 3
+        run: |
+          yum install -y epel-release
+          yum install -y python3
+          
       - name: Release build os - centos
         run: |
           chmod +x ci/release-build.sh
