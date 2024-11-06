@@ -10,7 +10,7 @@ def compress_file(file_path):
     compressed_file_path = f"{file_path}.gz"
     with open(file_path, 'rb') as f_in, open(compressed_file_path, 'wb') as f_out:
         compressor = zlib.compressobj(wbits=zlib.MAX_WBITS | 16)  # gzip压缩
-        while chunk := f_in.read(1024 * 1024):  # 每次读取1MB
+        while chunk = f_in.read(1024 * 1024):  # 每次读取1MB
             f_out.write(compressor.compress(chunk))
         f_out.write(compressor.flush())
     return compressed_file_path
