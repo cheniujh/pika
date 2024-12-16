@@ -1248,6 +1248,29 @@ var _ = Describe("List Commands", func() {
 			Expect(lRange.Val()).To(Equal([]string{}))
 		})
 
+
+		It("rpoplpush test for issue 2953", func() {
+            // LPUSH mylist 1 2 3 4 5
+            lPush := client.LPush(ctx, "mylist", "5", "4", "3", "2", "1")
+            Expect(lPush.Err()).NotTo(HaveOccurred())
+            Expect(lPush.Val()).To(Equal(int64(5)))
+
+            // RPOPLPUSH mylist mylist， mylist should change to : 5 1 2 3 4
+            rPopLPush := client.RPopLPush(ctx, "mylist", "mylist")
+            Expect(rPopLPush.Err()).NotTo(HaveOccurred())
+            Expect(rPopLPush.Val()).To(Equal("5"))
+
+            // check if the first element of mylist is 5
+            lIndex := client.LIndex(ctx, "mylist", 0)
+            Expect(lIndex.Err()).NotTo(HaveOccurred())
+            Expect(lIndex.Val()).To(Equal("5"))
+
+            // check if the last element of mylist is 4
+            lIndexLast := client.LIndex(ctx, "mylist", -1)
+            Expect(lIndexLast.Err()).NotTo(HaveOccurred())
+            Expect(lIndexLast.Val()).To(Equal("4"))
+		})
+
 		//It("should LMove", func() {
 		//	rPush := client.RPush(ctx, "lmove1", "ichi")
 		//	Expect(rPush.Err()).NotTo(HaveOccurred())
